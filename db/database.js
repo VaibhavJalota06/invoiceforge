@@ -2110,16 +2110,16 @@ function closeDatabase() {
 module.exports = {
   initDatabase, getDbPath, closeDatabase,
   getSettings, saveSettings, verifyAdminPin, saveSecuritySettings, checkPostUpdateNotification,
-  getAllClients, getClient, saveClient, deleteClient, getClientProfile, getClientFullProfile,
-  getAllVendors, getVendor, saveVendor, deleteVendor, getVendorFullProfile,
-  getAllInvoices, getInvoice, getNextInvoiceNumber, getNextInvoiceNumberObj,
+  getAllClients, getClients: getAllClients, getClient, saveClient, deleteClient, getClientProfile, getClientFullProfile,
+  getAllVendors, getVendors: getAllVendors, getVendor, saveVendor, deleteVendor, getVendorFullProfile,
+  getAllInvoices, getInvoices: getAllInvoices, getInvoice, getNextInvoiceNumber, getNextInvoiceNumberObj,
   saveInvoice, saveInvoiceAndReturn, deleteInvoice, duplicateInvoice,
   updateInvoiceStatus, getDashboardStats,
-  getAllPurchases, getPurchase, getNextPurchaseNumberObj, savePurchase, deletePurchase, updatePurchaseStatus,
-  getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
+  getAllPurchases, getPurchases: getAllPurchases, getPurchase, getNextPurchaseNumberObj, savePurchase, deletePurchase, updatePurchaseStatus,
+  getAllProducts, getProducts: getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
   deductStockForInvoice, restoreStockForInvoice, addStockForPurchase, restoreStockForPurchase,
   getFinancialReportData, getBalanceSheet, getMonthlyStockReport, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
   exportMonthlyDataPackage, importMonthlyDataPackage,
   getAllUsers, getUser, getActiveUser, saveUser, deleteUser, switchActiveUser,
-  getAllSalesReturns, getSalesReturn, getNextReturnNumberObj, saveSalesReturn, deleteSalesReturn
+  getAllSalesReturns, getSalesReturns: getAllSalesReturns, getSalesReturn, getNextReturnNumberObj, saveSalesReturn, deleteSalesReturn
 };
