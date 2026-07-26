@@ -184,6 +184,7 @@ function createSchema() {
     `ALTER TABLE vendors ADD COLUMN address TEXT DEFAULT ''`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
     `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
+    `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`,
     `ALTER TABLE settings ADD COLUMN return_prefix TEXT DEFAULT 'RET-2026-'`,
     `ALTER TABLE settings ADD COLUMN return_counter INTEGER DEFAULT 1`,
     `CREATE TABLE IF NOT EXISTS sales_returns (
@@ -1100,19 +1101,38 @@ function deductStockForInvoice(invoiceId, items = null, clientId = 0) {
 }
 
 function restoreStockForInvoice(invoiceId) {
-  const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'INVOICE' AND reference_id = ? AND type = 'OUT' AND reversed = 0`).all(invoiceId);
-  txs.forEach(tx => {
-    recordStockTransaction({
-      product_id: tx.product_id,
-      type: 'IN',
-      quantity: tx.quantity,
-      reference_type: 'INVOICE_RESTORE',
-      reference_id: invoiceId,
-      client_id: tx.client_id,
-      notes: `Restored stock from deleted Invoice #${invoiceId}`
+  try {
+    const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'INVOICE' AND reference_id = ? AND type = 'OUT' AND (reversed = 0 OR reversed IS NULL)`).all(invoiceId);
+    txs.forEach(tx => {
+      recordStockTransaction({
+        product_id: tx.product_id,
+        type: 'IN',
+        quantity: tx.quantity,
+        reference_type: 'INVOICE_RESTORE',
+        reference_id: invoiceId,
+        client_id: tx.client_id,
+        notes: `Restored stock from deleted Invoice #${invoiceId}`
+      });
+      try {
+        db.prepare('UPDATE stock_transactions SET reversed = 1 WHERE id = ?').run(tx.id);
+      } catch (e) {}
     });
-    db.prepare('UPDATE stock_transactions SET reversed = 1 WHERE id = ?').run(tx.id);
-  });
+  } catch (err) {
+    try {
+      const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'INVOICE' AND reference_id = ? AND type = 'OUT'`).all(invoiceId);
+      txs.forEach(tx => {
+        recordStockTransaction({
+          product_id: tx.product_id,
+          type: 'IN',
+          quantity: tx.quantity,
+          reference_type: 'INVOICE_RESTORE',
+          reference_id: invoiceId,
+          client_id: tx.client_id,
+          notes: `Restored stock from deleted Invoice #${invoiceId}`
+        });
+      });
+    } catch (e) {}
+  }
 }
 
 function getClientFullProfile(clientId) {
@@ -1964,19 +1984,38 @@ function addStockForPurchase(purchaseId, items = null, vendorId = 0) {
 }
 
 function restoreStockForPurchase(purchaseId) {
-  const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'PURCHASE' AND reference_id = ? AND type = 'IN' AND reversed = 0`).all(purchaseId);
-  txs.forEach(tx => {
-    recordStockTransaction({
-      product_id: tx.product_id,
-      type: 'OUT',
-      quantity: tx.quantity,
-      reference_type: 'PURCHASE_CANCEL',
-      reference_id: purchaseId,
-      client_id: 0,
-      notes: `Reverted stock from cancelled/deleted Purchase #${purchaseId}`
+  try {
+    const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'PURCHASE' AND reference_id = ? AND type = 'IN' AND (reversed = 0 OR reversed IS NULL)`).all(purchaseId);
+    txs.forEach(tx => {
+      recordStockTransaction({
+        product_id: tx.product_id,
+        type: 'OUT',
+        quantity: tx.quantity,
+        reference_type: 'PURCHASE_CANCEL',
+        reference_id: purchaseId,
+        client_id: 0,
+        notes: `Reverted stock from cancelled/deleted Purchase #${purchaseId}`
+      });
+      try {
+        db.prepare('UPDATE stock_transactions SET reversed = 1 WHERE id = ?').run(tx.id);
+      } catch (e) {}
     });
-    db.prepare('UPDATE stock_transactions SET reversed = 1 WHERE id = ?').run(tx.id);
-  });
+  } catch (err) {
+    try {
+      const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'PURCHASE' AND reference_id = ? AND type = 'IN'`).all(purchaseId);
+      txs.forEach(tx => {
+        recordStockTransaction({
+          product_id: tx.product_id,
+          type: 'OUT',
+          quantity: tx.quantity,
+          reference_type: 'PURCHASE_CANCEL',
+          reference_id: purchaseId,
+          client_id: 0,
+          notes: `Reverted stock from cancelled/deleted Purchase #${purchaseId}`
+        });
+      });
+    } catch (e) {}
+  }
 }
 
 function savePurchase(data) {
