@@ -40,10 +40,7 @@ function createWindow() {
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
 
   win.once('ready-to-show', () => {
-    // If screen height or width is compact, maximize window automatically for best experience
-    if (screenWidth <= 1366 || screenHeight <= 768) {
-      win.maximize();
-    }
+    win.maximize();
     win.show();
     win.focus();
   });
