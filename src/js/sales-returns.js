@@ -18,7 +18,8 @@ async function renderSalesReturns() {
       search: _returnsState.search,
       status: _returnsState.statusFilter
     });
-    _returnsState.invoices = await window.api.getAllInvoices({});
+    const fetchInvoices = window.api.getInvoices || window.api.getAllInvoices;
+    _returnsState.invoices = fetchInvoices ? await fetchInvoices({}) : [];
   } catch (err) {
     showToast('Failed to load sales returns: ' + err.message, 'error');
     _returnsState.returns = [];
@@ -176,8 +177,10 @@ async function renderSalesReturns() {
 
 async function openSalesReturnModal(prefilledInvoiceId = null) {
   const nextReturnObj = await window.api.getNextReturnNumber();
-  const invoices = await window.api.getAllInvoices({});
-  const products = await window.api.getAllProducts();
+  const fetchInvoices = window.api.getInvoices || window.api.getAllInvoices;
+  const invoices = fetchInvoices ? await fetchInvoices({}) : [];
+  const fetchProducts = window.api.getProducts || window.api.getAllProducts;
+  const products = fetchProducts ? await fetchProducts() : [];
 
   let selectedInv = prefilledInvoiceId ? invoices.find(i => i.id === prefilledInvoiceId) : null;
   if (!selectedInv && invoices.length > 0) {

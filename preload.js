@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Invoices
   getInvoices: (filters) => ipcRenderer.invoke('get-invoices', filters),
+  getAllInvoices: (filters) => ipcRenderer.invoke('get-invoices', filters),
   getInvoice: (id) => ipcRenderer.invoke('get-invoice', id),
   saveInvoice: (invoice) => ipcRenderer.invoke('save-invoice', invoice),
   deleteInvoice: (id) => ipcRenderer.invoke('delete-invoice', id),
