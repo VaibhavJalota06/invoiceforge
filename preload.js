@@ -63,6 +63,8 @@ contextBridge.exposeInMainWorld('api', {
 
   // Financial Reports & Selective Data Transfers
   getFinancialReportData: (filters) => ipcRenderer.invoke('get-financial-report-data', filters),
+  getBalanceSheet: (asOfDate) => ipcRenderer.invoke('get-balance-sheet', asOfDate),
+  getMonthlyStockReport: (filters) => ipcRenderer.invoke('get-monthly-stock-report', filters),
   exportFinancialCsv: (filters, type) => ipcRenderer.invoke('export-financial-csv', filters, type),
   exportMonthlyDataPackage: (filters) => ipcRenderer.invoke('export-monthly-data-package', filters),
   importMonthlyDataPackage: () => ipcRenderer.invoke('import-monthly-data-package'),

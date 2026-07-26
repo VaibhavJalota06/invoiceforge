@@ -950,6 +950,159 @@ function getFinancialReportData(filters = {}) {
   };
 }
 
+// ── Balance Sheet Financial Statement ─────────────────────────────────────────
+function getBalanceSheet(asOfDate = null) {
+  const dateLimit = asOfDate || new Date().toISOString().slice(0, 10);
+
+  // 1. Accounts Receivable (Unpaid/sent/overdue sales invoices)
+  const arRow = db.prepare(`
+    SELECT COALESCE(SUM(grand_total), 0) AS total
+    FROM invoices
+    WHERE invoice_date <= ? AND status IN ('sent', 'overdue', 'unpaid', 'partially_paid')
+  `).get(dateLimit);
+  const accountsReceivable = Number(arRow?.total) || 0;
+
+  // 2. Inventory Valuation (current_stock * cost_price for all products)
+  const products = db.prepare(`SELECT * FROM products`).all();
+  let inventoryValuation = 0;
+  let retailValuation = 0;
+  products.forEach(p => {
+    const stock = Number(p.current_stock) || 0;
+    const cost = Number(p.cost_price) || 0;
+    const rate = Number(p.selling_rate) || 0;
+    if (stock > 0) {
+      inventoryValuation += stock * cost;
+      retailValuation += stock * rate;
+    }
+  });
+
+  // 3. Paid Revenue vs Paid Purchases (Cash / Bank equivalent)
+  const cashInRow = db.prepare(`
+    SELECT COALESCE(SUM(grand_total), 0) AS total
+    FROM invoices
+    WHERE invoice_date <= ? AND status = 'paid'
+  `).get(dateLimit);
+  const cashIn = Number(cashInRow?.total) || 0;
+
+  const cashOutRow = db.prepare(`
+    SELECT COALESCE(SUM(grand_total), 0) AS total
+    FROM purchases
+    WHERE purchase_date <= ? AND status = 'paid'
+  `).get(dateLimit);
+  const cashOut = Number(cashOutRow?.total) || 0;
+
+  const cashAndBank = cashIn - cashOut;
+
+  // Total Assets
+  const totalAssets = accountsReceivable + inventoryValuation + (cashAndBank > 0 ? cashAndBank : 0);
+
+  // 4. Accounts Payable (Unpaid/received/pending purchase orders)
+  const apRow = db.prepare(`
+    SELECT COALESCE(SUM(grand_total), 0) AS total
+    FROM purchases
+    WHERE purchase_date <= ? AND status IN ('received', 'pending', 'unpaid')
+  `).get(dateLimit);
+  const accountsPayable = Number(apRow?.total) || 0;
+
+  // 5. Tax Payable (GST Output Tax collected minus Input Tax Credit)
+  const outputTaxRow = db.prepare(`
+    SELECT COALESCE(SUM(tax_amount), 0) AS total
+    FROM invoices
+    WHERE invoice_date <= ? AND status IN ('paid', 'sent', 'overdue')
+  `).get(dateLimit);
+  const outputTax = Number(outputTaxRow?.total) || 0;
+
+  const inputTaxRow = db.prepare(`
+    SELECT COALESCE(SUM(tax_amount), 0) AS total
+    FROM purchases
+    WHERE purchase_date <= ? AND status IN ('paid', 'received')
+  `).get(dateLimit);
+  const inputTax = Number(inputTaxRow?.total) || 0;
+
+  const taxPayable = Math.max(0, outputTax - inputTax);
+
+  // Total Liabilities
+  const totalLiabilities = accountsPayable + taxPayable + (cashAndBank < 0 ? Math.abs(cashAndBank) : 0);
+
+  // Net Equity / Owner's Funds
+  const netEquity = totalAssets - totalLiabilities;
+
+  return {
+    asOfDate: dateLimit,
+    assets: {
+      accountsReceivable,
+      inventoryValuation,
+      retailValuation,
+      cashAndBank,
+      totalAssets
+    },
+    liabilities: {
+      accountsPayable,
+      taxPayable,
+      outputTax,
+      inputTax,
+      totalLiabilities
+    },
+    equity: {
+      netEquity
+    }
+  };
+}
+
+// ── Monthly Stock Valuation & Movements Report ────────────────────────────────
+function getMonthlyStockReport(filters = {}) {
+  const products = db.prepare(`SELECT * FROM products ORDER BY name COLLATE NOCASE`).all();
+  let totalCostValuation = 0;
+  let totalRetailValuation = 0;
+  let totalPhysicalUnits = 0;
+
+  const reportItems = products.map(p => {
+    const stock = Number(p.current_stock) || 0;
+    const cost = Number(p.cost_price) || 0;
+    const selling = Number(p.selling_rate) || 0;
+    const costValue = stock * cost;
+    const retailValue = stock * selling;
+
+    totalCostValuation += costValue;
+    totalRetailValuation += retailValue;
+    totalPhysicalUnits += stock;
+
+    const txInRow = db.prepare(`
+      SELECT COALESCE(SUM(quantity), 0) as total
+      FROM stock_transactions
+      WHERE product_id = ? AND type = 'IN' AND reversed = 0
+    `).get(p.id);
+
+    const txOutRow = db.prepare(`
+      SELECT COALESCE(SUM(quantity), 0) as total
+      FROM stock_transactions
+      WHERE product_id = ? AND type = 'OUT' AND reversed = 0
+    `).get(p.id);
+
+    return {
+      ...p,
+      stock,
+      cost,
+      selling,
+      costValue,
+      retailValue,
+      totalIn: Number(txInRow?.total) || 0,
+      totalOut: Number(txOutRow?.total) || 0
+    };
+  });
+
+  return {
+    items: reportItems,
+    summary: {
+      totalProducts: products.length,
+      totalPhysicalUnits,
+      totalCostValuation,
+      totalRetailValuation,
+      unrealizedMargin: totalRetailValuation - totalCostValuation
+    }
+  };
+}
+
 function _csvEsc(str) {
   return String(str || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ');
 }
@@ -1647,6 +1800,6 @@ module.exports = {
   getAllPurchases, getPurchase, getNextPurchaseNumberObj, savePurchase, deletePurchase, updatePurchaseStatus,
   getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
   deductStockForInvoice, restoreStockForInvoice, addStockForPurchase, restoreStockForPurchase,
-  getFinancialReportData, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
+  getFinancialReportData, getBalanceSheet, getMonthlyStockReport, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
   exportMonthlyDataPackage, importMonthlyDataPackage
 };

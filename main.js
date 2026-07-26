@@ -1,40 +1,53 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { autoUpdater } = require('electron-updater');
 
-// Some Windows systems fail to initialize Electron's GPU process, leaving the
-// window visible but unresponsive. The invoice UI does not require GPU rendering.
 app.disableHardwareAcceleration();
 
-// Auto-updater options
-// Updates are downloaded only after the user explicitly chooses "Update now".
 autoUpdater.autoDownload = false;
 autoUpdater.autoInstallOnAppQuit = false;
 
-// Initialize database (must happen after app is ready for getPath to work)
 let db;
 
 function createWindow() {
+  // Query primary display work area resolution
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+
+  // Auto-calculate optimal width & height based on host screen resolution
+  const targetWidth = Math.min(1680, Math.max(1024, Math.floor(screenWidth * 0.92)));
+  const targetHeight = Math.min(1024, Math.max(680, Math.floor(screenHeight * 0.90)));
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
-    minWidth: 1024,
-    minHeight: 680,
+    width: targetWidth,
+    height: targetHeight,
+    minWidth: 920,
+    minHeight: 580,
+    resizable: true,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true
     },
-    backgroundColor: '#1a1d23',
-    show: true,
+    backgroundColor: '#0f172a',
+    show: false,
     icon: path.join(__dirname, 'src', 'assets', 'icon.ico')
   });
 
   win.loadFile(path.join(__dirname, 'src', 'index.html'));
-  win.show();
-  win.focus();
+
+  win.once('ready-to-show', () => {
+    // If screen height or width is compact, maximize window automatically for best experience
+    if (screenWidth <= 1366 || screenHeight <= 768) {
+      win.maximize();
+    }
+    win.show();
+    win.focus();
+  });
+
   win.setMenuBarVisibility(false);
 
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
@@ -464,10 +477,10 @@ ipcMain.handle('restore-backup-file', async (_e, filePath) => {
 });
 
 // ─── Financial Reports IPC ─────────────────────────────────────────────────────
-ipcMain.handle('get-financial-report-data', (_e, filters) => {
-  assertUnlocked();
-  return db.getFinancialReportData(filters);
-});
+ipcMain.handle('get-financial-report', (_e, filters) => { assertUnlocked(); return db.getFinancialReportData(filters); });
+ipcMain.handle('get-financial-report-data', (_e, filters) => { assertUnlocked(); return db.getFinancialReportData(filters); });
+ipcMain.handle('get-balance-sheet', (_e, asOfDate) => { assertUnlocked(); return db.getBalanceSheet(asOfDate); });
+ipcMain.handle('get-monthly-stock-report', (_e, filters) => { assertUnlocked(); return db.getMonthlyStockReport(filters); });
 
 ipcMain.handle('export-financial-csv', async (_e, filters, type) => {
   assertUnlocked();
