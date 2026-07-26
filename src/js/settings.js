@@ -166,6 +166,20 @@ async function renderSettings() {
         </div>
       </div>
 
+      <!-- Personalized User Accounts & Team Management Card -->
+      <div class="card" style="margin-bottom:18px">
+        <div class="form-section-title" style="display:flex;justify-content:space-between;align-items:center">
+          <span>Personalized User Profiles &amp; Team Accounts</span>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-settings-open-users">Manage Users &amp; Profiles</button>
+        </div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:14px;line-height:1.6">
+          Manage personalized user profiles, role-based access permissions (Admin, Manager, Staff), and security PINs for your workstation.
+        </p>
+        <div id="settings-users-summary-list" style="display:flex;flex-direction:column;gap:8px">
+          <div style="font-size:12px;color:var(--text-3)">Loading registered user accounts…</div>
+        </div>
+      </div>
+
       <!-- Isolated Instance Storage Architecture -->
       <div class="card" style="margin-bottom:18px">
         <div class="form-section-title">Isolated Instance Storage Architecture</div>
@@ -215,6 +229,29 @@ async function renderSettings() {
       if (dirInput) dirInput.value = paths.dataDir;
       if (dbInput) dbInput.value = paths.dbPath;
     }
+  });
+
+  // Populate Users List Summary
+  window.api.getAllUsers?.().then(users => {
+    const listEl = document.getElementById('settings-users-summary-list');
+    if (listEl && users) {
+      listEl.innerHTML = users.map(u => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--bg-3);border-radius:6px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="width:24px;height:24px;border-radius:50%;background:${u.avatar_color || '#6366f1'};color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center">
+              ${(u.name || 'U').charAt(0).toUpperCase()}
+            </div>
+            <span style="font-size:13px;font-weight:600;color:var(--text)">${escHtml(u.name)}</span>
+            <span class="badge badge-info" style="font-size:10px">${escHtml(u.role)}</span>
+          </div>
+          <span style="font-size:11px;color:var(--text-3)">${u.email ? escHtml(u.email) : 'Local Account'}</span>
+        </div>
+      `).join('');
+    }
+  });
+
+  document.getElementById('btn-settings-open-users')?.addEventListener('click', () => {
+    if (typeof openUserProfileModal === 'function') openUserProfileModal();
   });
 
   document.getElementById('btn-open-data-dir')?.addEventListener('click', () => {

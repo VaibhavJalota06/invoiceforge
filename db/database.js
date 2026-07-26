@@ -173,9 +173,22 @@ function createSchema() {
     `ALTER TABLE settings ADD COLUMN last_installed_version TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN purchase_prefix TEXT DEFAULT 'PUR-2026-'`,
     `ALTER TABLE settings ADD COLUMN purchase_counter INTEGER DEFAULT 1`,
+    `ALTER TABLE settings ADD COLUMN active_user_id INTEGER DEFAULT 1`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
     `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
-    `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`
+    `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`,
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE DEFAULT '',
+      role TEXT DEFAULT 'Admin',
+      pin TEXT DEFAULT '',
+      avatar_color TEXT DEFAULT '#6366f1',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      last_login TEXT DEFAULT ''
+    )`,
+    `INSERT OR IGNORE INTO users (id, name, email, role, pin, avatar_color) VALUES (1, 'Administrator', 'admin@invoiceforge.local', 'Admin', '', '#6366f1')`
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch (e) {} // expected to fail if column already exists
@@ -216,6 +229,87 @@ function saveSettings(data) {
   db.prepare(`UPDATE settings SET ${fields} WHERE id = 1`).run(data);
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
   return true;
+}
+
+// ── Personalized Multi-User Management Functions ────────────────────────────────
+function getAllUsers() {
+  try {
+    return db.prepare(`SELECT id, name, email, role, pin, avatar_color, is_active, created_at, last_login FROM users ORDER BY name COLLATE NOCASE`).all();
+  } catch(e) {
+    return [{ id: 1, name: 'Administrator', email: 'admin@invoiceforge.local', role: 'Admin', avatar_color: '#6366f1' }];
+  }
+}
+
+function getUser(id) {
+  try {
+    return db.prepare(`SELECT id, name, email, role, pin, avatar_color, is_active, created_at, last_login FROM users WHERE id = ?`).get(id);
+  } catch(e) {
+    return null;
+  }
+}
+
+function getActiveUser() {
+  const settings = getSettings();
+  const activeId = Number(settings?.active_user_id) || 1;
+  let user = getUser(activeId);
+  if (!user) {
+    user = db.prepare(`SELECT * FROM users ORDER BY id ASC LIMIT 1`).get();
+  }
+  return user || { id: 1, name: 'Administrator', email: 'admin@invoiceforge.local', role: 'Admin', avatar_color: '#6366f1' };
+}
+
+function saveUser(userData) {
+  const { id, name, email, role, pin, avatar_color } = userData;
+  if (!name || !name.trim()) throw new Error('User name is required.');
+
+  if (id) {
+    db.prepare(`
+      UPDATE users
+      SET name = ?, email = ?, role = ?, pin = ?, avatar_color = ?
+      WHERE id = ?
+    `).run(name.trim(), (email || '').trim(), role || 'Staff', pin || '', avatar_color || '#6366f1', id);
+    return getUser(id);
+  } else {
+    const res = db.prepare(`
+      INSERT INTO users (name, email, role, pin, avatar_color)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name.trim(), (email || '').trim(), role || 'Staff', pin || '', avatar_color || '#6366f1');
+    return getUser(res.lastInsertRowid);
+  }
+}
+
+function deleteUser(id) {
+  const target = getUser(id);
+  if (!target) return { success: false, reason: 'User not found' };
+
+  const adminCount = db.prepare(`SELECT count(*) as c FROM users WHERE role = 'Admin'`).get().c;
+  if (target.role === 'Admin' && adminCount <= 1) {
+    throw new Error('Cannot delete the primary Administrator account.');
+  }
+
+  db.prepare(`DELETE FROM users WHERE id = ?`).run(id);
+
+  const activeUser = getActiveUser();
+  if (activeUser.id === id) {
+    const nextUser = db.prepare(`SELECT id FROM users LIMIT 1`).get();
+    if (nextUser) switchActiveUser(nextUser.id);
+  }
+  return { success: true };
+}
+
+function switchActiveUser(userId, pinInput = null) {
+  const user = getUser(userId);
+  if (!user) throw new Error('User account not found.');
+
+  if (user.pin && pinInput !== null && pinInput !== user.pin) {
+    throw new Error('Incorrect Security PIN for user account.');
+  }
+
+  db.prepare(`UPDATE settings SET active_user_id = ? WHERE id = 1`).run(userId);
+  try {
+    db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(userId);
+  } catch(e) {}
+  return user;
 }
 
 // ── Settings & Security Helpers ────────────────────────────────────────────────
@@ -1801,5 +1895,6 @@ module.exports = {
   getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
   deductStockForInvoice, restoreStockForInvoice, addStockForPurchase, restoreStockForPurchase,
   getFinancialReportData, getBalanceSheet, getMonthlyStockReport, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
-  exportMonthlyDataPackage, importMonthlyDataPackage
+  exportMonthlyDataPackage, importMonthlyDataPackage,
+  getAllUsers, getUser, getActiveUser, saveUser, deleteUser, switchActiveUser
 };

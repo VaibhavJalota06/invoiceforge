@@ -482,6 +482,14 @@ ipcMain.handle('get-financial-report-data', (_e, filters) => { assertUnlocked();
 ipcMain.handle('get-balance-sheet', (_e, asOfDate) => { assertUnlocked(); return db.getBalanceSheet(asOfDate); });
 ipcMain.handle('get-monthly-stock-report', (_e, filters) => { assertUnlocked(); return db.getMonthlyStockReport(filters); });
 
+// ─── Personalized User Profiles & Multi-User IPC ──────────────────────────────
+ipcMain.handle('get-all-users', () => { assertUnlocked(); return db.getAllUsers(); });
+ipcMain.handle('get-user', (_e, id) => { assertUnlocked(); return db.getUser(id); });
+ipcMain.handle('get-active-user', () => { assertUnlocked(); return db.getActiveUser(); });
+ipcMain.handle('save-user', (_e, userData) => { assertUnlocked(); return db.saveUser(userData); });
+ipcMain.handle('delete-user', (_e, id) => { assertUnlocked(); return db.deleteUser(id); });
+ipcMain.handle('switch-active-user', (_e, userId, pinInput) => { assertUnlocked(); return db.switchActiveUser(userId, pinInput); });
+
 ipcMain.handle('export-financial-csv', async (_e, filters, type) => {
   assertUnlocked();
   try {

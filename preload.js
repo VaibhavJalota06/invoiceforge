@@ -69,6 +69,14 @@ contextBridge.exposeInMainWorld('api', {
   exportMonthlyDataPackage: (filters) => ipcRenderer.invoke('export-monthly-data-package', filters),
   importMonthlyDataPackage: () => ipcRenderer.invoke('import-monthly-data-package'),
 
+  // Personalized User Profiles & Multi-User Management
+  getAllUsers: () => ipcRenderer.invoke('get-all-users'),
+  getUser: (id) => ipcRenderer.invoke('get-user', id),
+  getActiveUser: () => ipcRenderer.invoke('get-active-user'),
+  saveUser: (userData) => ipcRenderer.invoke('save-user', userData),
+  deleteUser: (id) => ipcRenderer.invoke('delete-user', id),
+  switchActiveUser: (userId, pinInput) => ipcRenderer.invoke('switch-active-user', userId, pinInput),
+
   // Sharing & Deep Links
   shareInvoiceWhatsApp: (payload) => ipcRenderer.invoke('share-invoice-whatsapp', payload),
   shareInvoiceEmail: (payload) => ipcRenderer.invoke('share-invoice-email', payload),
