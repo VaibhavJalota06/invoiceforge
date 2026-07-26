@@ -242,7 +242,7 @@ if (!window.api) {
     getDashboardStats: async () => {
       const clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
       const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
-      return { clientCount: clients.length, invoiceCount: invs.length, totalRevenue: 0, statusBreakdown: { unpaid: 0, paid: 0, overdue: 0 } };
+      return { clientCount: clients.length, invoiceCount: invs.length, totalRevenue: 0, statusBreakdown: [{ status: 'paid', count: 0 }, { status: 'unpaid', count: 0 }] };
     },
     getNextInvoiceNumberObj: async () => ({ invoiceNumber: 'INV-2026-001', counter: 1 }),
     exportPdf: async () => window.print(),

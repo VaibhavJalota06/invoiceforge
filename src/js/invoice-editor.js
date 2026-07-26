@@ -10,50 +10,58 @@ let _editorTaxLines = [];
 
 async function openInvoiceEditor(invoiceId, options = {}) {
   const content = document.getElementById('page-content');
+  if (!content) return;
   content.innerHTML = `<div class="loading-state"><div class="spinner"></div></div>`;
 
-  const [settings, clients, products] = await Promise.all([
-    window.api.getSettings(),
-    window.api.getClients(),
-    window.api.getProducts()
-  ]);
+  try {
+    const [settingsRes, clientsRes, productsRes] = await Promise.all([
+      window.api?.getSettings?.().catch(() => ({})) || {},
+      window.api?.getClients?.().catch(() => []) || [],
+      window.api?.getProducts?.().catch(() => []) || []
+    ]);
 
-  _editorClients = clients || [];
-  window._editorProducts = products || [];
-  _editorInvoice = null;
+    const settings = settingsRes || {};
+    const clients = clientsRes || [];
+    const products = productsRes || [];
 
-  let invoice = null;
-  if (invoiceId) invoice = await window.api.getInvoice(invoiceId);
-  _editorInvoice = invoice;
+    _editorClients = clients;
+    window._editorProducts = products;
+    _editorInvoice = null;
 
-  const targetClientId = invoice?.client_id || options?.clientId || null;
+    let invoice = null;
+    if (invoiceId && window.api?.getInvoice) {
+      invoice = await window.api.getInvoice(invoiceId).catch(() => null);
+    }
+    _editorInvoice = invoice;
 
-  const defaultCurrency = invoice?.currency || settings.default_currency || 'INR';
-  const today = todayISO();
-  const paymentTerms = Math.max(0, Number(settings.default_payment_terms) || 30);
-  const due   = addDays(today, paymentTerms);
+    const targetClientId = invoice?.client_id || options?.clientId || null;
 
-  let invoiceNumber = invoice?.invoice_number || '';
-  let nextCounter   = null;
-  if (!invoiceNumber) {
-    const result = await window.api.getNextInvoiceNumber();
-    invoiceNumber = result.invoiceNumber;
-    nextCounter   = result.nextCounter;
-  }
+    const defaultCurrency = invoice?.currency || settings.default_currency || 'INR';
+    const today = typeof todayISO === 'function' ? todayISO() : new Date().toISOString().slice(0, 10);
+    const paymentTerms = Math.max(0, Number(settings.default_payment_terms) || 30);
+    const due   = typeof addDays === 'function' ? addDays(today, paymentTerms) : today;
 
-  _editorItems = invoice?.items?.length
-    ? invoice.items.map(i => ({ unit: 'Pcs', ...i }))
-    : [{ description: '', quantity: 1, unit: 'Pcs', rate: 0, amount: 0 }];
+    let invoiceNumber = invoice?.invoice_number || '';
+    let nextCounter   = null;
+    if (!invoiceNumber) {
+      const result = (await window.api?.getNextInvoiceNumber?.().catch(() => ({}))) || {};
+      invoiceNumber = result.invoiceNumber || 'INV-001';
+      nextCounter   = result.nextCounter || 1;
+    }
 
-  _editorTaxLines = invoice?.tax_lines?.length
-    ? invoice.tax_lines.map(t => ({ ...t }))
-    : [
-        { name: 'CGST', rate: settings.default_tax_rate ? settings.default_tax_rate / 2 : 9, amount: 0 },
-        { name: 'SGST', rate: settings.default_tax_rate ? settings.default_tax_rate / 2 : 9, amount: 0 }
-      ];
+    _editorItems = invoice?.items?.length
+      ? invoice.items.map(i => ({ unit: 'Pcs', ...i }))
+      : [{ description: '', quantity: 1, unit: 'Pcs', rate: 0, amount: 0 }];
 
-  const isNew = !invoice;
-  const isFinalized = invoice && invoice.status !== 'draft';
+    _editorTaxLines = invoice?.tax_lines?.length
+      ? invoice.tax_lines.map(t => ({ ...t }))
+      : [
+          { name: 'CGST', rate: settings.default_tax_rate ? settings.default_tax_rate / 2 : 9, amount: 0 },
+          { name: 'SGST', rate: settings.default_tax_rate ? settings.default_tax_rate / 2 : 9, amount: 0 }
+        ];
+
+    const isNew = !invoice;
+    const isFinalized = invoice && invoice.status !== 'draft';
 
   content.innerHTML = `
     <div class="page-header">
@@ -236,6 +244,10 @@ async function openInvoiceEditor(invoiceId, options = {}) {
     document.getElementById('btn-print')?.addEventListener('click', _printInvoice);
     document.getElementById('btn-share-wa')?.addEventListener('click', () => shareInvoiceOnWhatsApp(invoice.id));
     document.getElementById('btn-share-email')?.addEventListener('click', () => shareInvoiceViaEmail(invoice.id));
+  }
+  } catch (err) {
+    console.error('Error in openInvoiceEditor:', err);
+    if (typeof showToast === 'function') showToast('Failed to open invoice editor: ' + err.message, 'error');
   }
 }
 
