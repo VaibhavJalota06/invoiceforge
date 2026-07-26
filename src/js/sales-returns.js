@@ -29,9 +29,7 @@ async function renderSalesReturns() {
   const totalCount = returns.length;
   const totalAmount = returns.reduce((sum, r) => sum + (Number(r.grand_total) || 0), 0);
   const creditNotesCount = returns.filter(r => r.refund_status === 'credit_note').length;
-  const refundedCount = returns.filter(r => r.refund_status === 'refunded').length;
-
-  content.innerHTML = `
+  const refundedCount = returns.filter(r => r.refund_status === 'refunded').lengt  content.innerHTML = `
     <div class="page-header">
       <div>
         <h1 class="page-title">Sales Returns &amp; Credit Notes</h1>
@@ -39,7 +37,7 @@ async function renderSalesReturns() {
       </div>
       <div class="page-actions">
         <button class="btn btn-primary" id="btn-new-return">
-          🔄 Create Sales Return
+          ${ICONS.plus} Create Sales Return
         </button>
       </div>
     </div>
@@ -47,7 +45,7 @@ async function renderSalesReturns() {
     <!-- Summary KPI Cards -->
     <div class="stats-grid" style="margin-bottom:20px">
       <div class="stat-card">
-        <div class="stat-icon" style="background:var(--accent-glow);color:var(--accent)">🔄</div>
+        <div class="stat-icon purple">${ICONS.rotateCcw}</div>
         <div class="stat-content">
           <span class="stat-label">Total Sales Returns</span>
           <span class="stat-value">${totalCount}</span>
@@ -55,7 +53,7 @@ async function renderSalesReturns() {
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon" style="background:rgba(239, 68, 68, 0.15);color:var(--danger)">💸</div>
+        <div class="stat-icon red">${ICONS.dollar}</div>
         <div class="stat-content">
           <span class="stat-label">Total Returned Value</span>
           <span class="stat-value">₹ ${totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
@@ -63,7 +61,7 @@ async function renderSalesReturns() {
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon" style="background:rgba(16, 185, 129, 0.15);color:var(--success)">📝</div>
+        <div class="stat-icon green">${ICONS.fileText}</div>
         <div class="stat-content">
           <span class="stat-label">Credit Notes Issued</span>
           <span class="stat-value">${creditNotesCount}</span>
@@ -71,7 +69,7 @@ async function renderSalesReturns() {
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon" style="background:rgba(245, 158, 11, 0.15);color:var(--warning)">💰</div>
+        <div class="stat-icon amber">${ICONS.package}</div>
         <div class="stat-content">
           <span class="stat-label">Direct Cash Refunded</span>
           <span class="stat-value">${refundedCount}</span>
@@ -80,25 +78,29 @@ async function renderSalesReturns() {
     </div>
 
     <!-- Filter Bar -->
-    <div class="card" style="margin-bottom:20px;padding:16px">
-      <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center">
-        <div class="search-bar" style="flex:1;min-width:240px">
-          <span class="search-icon">🔍</span>
-          <input type="text" id="returns-search-input" class="search-input" placeholder="Search by Return #, Invoice #, or Client Name…" value="${escHtml(_returnsState.search)}" />
-        </div>
-
-        <select id="returns-status-filter" class="form-select" style="width:200px">
-          <option value="" ${_returnsState.statusFilter === '' ? 'selected' : ''}>All Refund Types</option>
-          <option value="credit_note" ${_returnsState.statusFilter === 'credit_note' ? 'selected' : ''}>Credit Note Issued</option>
-          <option value="refunded" ${_returnsState.statusFilter === 'refunded' ? 'selected' : ''}>Direct Refunded</option>
-          <option value="pending" ${_returnsState.statusFilter === 'pending' ? 'selected' : ''}>Pending Action</option>
-        </select>
+    <div class="filter-bar">
+      <div class="search-wrap" style="flex:1;max-width:380px">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="returns-search-input" class="search-input" placeholder="Search by Return #, Invoice #, or Client Name…" value="${escHtml(_returnsState.search)}" />
       </div>
+
+      <select id="returns-status-filter" class="form-select" style="min-width:180px">
+        <option value="" ${_returnsState.statusFilter === '' ? 'selected' : ''}>All Refund Types</option>
+        <option value="credit_note" ${_returnsState.statusFilter === 'credit_note' ? 'selected' : ''}>Credit Note Issued</option>
+        <option value="refunded" ${_returnsState.statusFilter === 'refunded' ? 'selected' : ''}>Direct Refunded</option>
+        <option value="pending" ${_returnsState.statusFilter === 'pending' ? 'selected' : ''}>Pending Action</option>
+      </select>
     </div>
 
     <!-- Sales Returns Data Table -->
-    <div class="card">
-      <div class="table-wrap">
+    <div class="table-wrap">
+      ${returns.length === 0 ? `
+        <div class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <h3>No sales returns yet</h3>
+          <p>Process customer returns or issue credit notes to track refunds.</p>
+        </div>
+      ` : `
         <table>
           <thead>
             <tr>
@@ -113,14 +115,7 @@ async function renderSalesReturns() {
             </tr>
           </thead>
           <tbody>
-            ${returns.length === 0 ? `
-              <tr>
-                <td colspan="8" style="text-align:center;padding:40px;color:var(--text-3)">
-                  <div style="font-size:32px;margin-bottom:8px">📦</div>
-                  No sales returns or credit notes recorded yet.
-                </td>
-              </tr>
-            ` : returns.map(r => `
+            ${returns.map(r => `
               <tr>
                 <td><strong style="color:var(--accent)">${escHtml(r.return_number)}</strong></td>
                 <td>${escHtml(r.return_date || '')}</td>
@@ -139,16 +134,16 @@ async function renderSalesReturns() {
                   }
                 </td>
                 <td style="text-align:right">
-                  <div style="display:flex;gap:6px;justify-content:flex-end">
-                    <button class="btn btn-ghost btn-sm btn-view-return" data-id="${r.id}" title="View Details">👁️</button>
-                    <button class="btn btn-ghost btn-sm btn-delete-return" data-id="${r.id}" style="color:var(--danger)" title="Delete & Revert Stock">🗑️</button>
+                  <div style="display:flex;gap:4px;justify-content:flex-end">
+                    <button class="btn-icon btn-view-return" data-id="${r.id}" title="View Details">${ICONS.eye}</button>
+                    <button class="btn-icon danger btn-delete-return" data-id="${r.id}" title="Delete &amp; Revert Stock">${ICONS.trash}</button>
                   </div>
                 </td>
               </tr>
             `).join('')}
           </tbody>
         </table>
-      </div>
+      `}
     </div>
   `;
 
