@@ -268,31 +268,66 @@ function getNextReturnNumberObj() {
 }
 
 function getAllSalesReturns(filters = {}) {
-  let sql = `
-    SELECT r.*, c.name as client_name_db
-    FROM sales_returns r
-    LEFT JOIN clients c ON r.client_id = c.id
-    WHERE 1=1
-  `;
-  const params = [];
+  try {
+    let sql = `
+      SELECT r.*, c.name as client_name_db
+      FROM sales_returns r
+      LEFT JOIN clients c ON r.client_id = c.id
+      WHERE 1=1
+    `;
+    const params = [];
 
-  if (filters.search) {
-    sql += ` AND (r.return_number LIKE ? OR r.invoice_number LIKE ? OR r.client_name LIKE ? OR c.name LIKE ?)`;
-    const term = `%${filters.search}%`;
-    params.push(term, term, term, term);
+    if (filters && filters.search) {
+      sql += ` AND (r.return_number LIKE ? OR r.invoice_number LIKE ? OR r.client_name LIKE ? OR c.name LIKE ?)`;
+      const term = `%${filters.search}%`;
+      params.push(term, term, term, term);
+    }
+    if (filters && filters.status) {
+      sql += ` AND r.refund_status = ?`;
+      params.push(filters.status);
+    }
+
+    sql += ` ORDER BY r.id DESC`;
+    const rows = db.prepare(sql).all(...params);
+
+    return rows.map(r => ({
+      ...r,
+      client_name: r.client_name || r.client_name_db || 'Walk-in Customer'
+    }));
+  } catch (e) {
+    console.error('getAllSalesReturns error:', e.message);
+    try {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS sales_returns (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_number TEXT NOT NULL UNIQUE,
+          invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+          invoice_number TEXT DEFAULT '',
+          client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+          client_name TEXT DEFAULT '',
+          return_date TEXT NOT NULL,
+          reason TEXT DEFAULT 'Customer Return',
+          subtotal REAL DEFAULT 0,
+          tax_amount REAL DEFAULT 0,
+          grand_total REAL DEFAULT 0,
+          refund_status TEXT DEFAULT 'credit_note',
+          notes TEXT DEFAULT '',
+          created_at TEXT DEFAULT (datetime('now'))
+        );
+        CREATE TABLE IF NOT EXISTS sales_return_items (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          return_id INTEGER NOT NULL REFERENCES sales_returns(id) ON DELETE CASCADE,
+          product_id INTEGER DEFAULT 0,
+          description TEXT DEFAULT '',
+          unit TEXT DEFAULT 'Pcs',
+          quantity REAL DEFAULT 1,
+          rate REAL DEFAULT 0,
+          amount REAL DEFAULT 0
+        );
+      `);
+    } catch(err) {}
+    return [];
   }
-  if (filters.status) {
-    sql += ` AND r.refund_status = ?`;
-    params.push(filters.status);
-  }
-
-  sql += ` ORDER BY r.id DESC`;
-  const rows = db.prepare(sql).all(...params);
-
-  return rows.map(r => ({
-    ...r,
-    client_name: r.client_name || r.client_name_db || 'Walk-in Customer'
-  }));
 }
 
 function getSalesReturn(id) {

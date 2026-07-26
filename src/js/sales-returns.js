@@ -11,18 +11,32 @@ let _returnsState = {
 
 async function renderSalesReturns() {
   const content = document.getElementById('page-content');
+  if (!content) return;
   content.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading Sales Returns &amp; Credit Notes…</p></div>`;
 
   try {
-    _returnsState.returns = await window.api.getAllSalesReturns({
-      search: _returnsState.search,
-      status: _returnsState.statusFilter
-    });
-    const fetchInvoices = window.api.getInvoices || window.api.getAllInvoices;
-    _returnsState.invoices = fetchInvoices ? await fetchInvoices({}) : [];
+    const fetchReturns = window.api?.getAllSalesReturns || window.api?.getSalesReturns;
+    if (fetchReturns) {
+      const res = await fetchReturns({
+        search: _returnsState.search || '',
+        status: _returnsState.statusFilter || ''
+      });
+      _returnsState.returns = Array.isArray(res) ? res : [];
+    } else {
+      _returnsState.returns = [];
+    }
+
+    const fetchInvoices = window.api?.getInvoices || window.api?.getAllInvoices;
+    if (fetchInvoices) {
+      const invs = await fetchInvoices({});
+      _returnsState.invoices = Array.isArray(invs) ? invs : [];
+    } else {
+      _returnsState.invoices = [];
+    }
   } catch (err) {
-    showToast('Failed to load sales returns: ' + err.message, 'error');
+    console.error('Sales returns load error:', err);
     _returnsState.returns = [];
+    _returnsState.invoices = [];
   }
 
   const returns = _returnsState.returns;
