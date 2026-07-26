@@ -94,11 +94,11 @@ function createSchema() {
   `);
 
   // Idempotent column migrations for settings & invoices
-  const settingsCols = db.prepare('PRAGMA table_info(settings)').all();
-  if (!settingsCols.some(c => c.name === 'app_lock_enabled')) db.exec('ALTER TABLE settings ADD COLUMN app_lock_enabled INTEGER DEFAULT 0');
-  if (!settingsCols.some(c => c.name === 'admin_name')) db.exec("ALTER TABLE settings ADD COLUMN admin_name TEXT DEFAULT 'Admin'");
-  if (!settingsCols.some(c => c.name === 'admin_pin')) db.exec("ALTER TABLE settings ADD COLUMN admin_pin TEXT DEFAULT ''");
-  if (!settingsCols.some(c => c.name === 'machine_guid')) db.exec("ALTER TABLE settings ADD COLUMN machine_guid TEXT DEFAULT ''");
+  try { db.exec(`ALTER TABLE settings ADD COLUMN app_lock_enabled INTEGER DEFAULT 0`); } catch(e){}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN admin_name TEXT DEFAULT 'Admin'`); } catch(e){}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN admin_pin TEXT DEFAULT ''`); } catch(e){}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN machine_guid TEXT DEFAULT ''`); } catch(e){}
+  try { db.exec(`ALTER TABLE settings ADD COLUMN last_installed_version TEXT DEFAULT ''`); } catch(e){}
 
   const invCols = db.prepare('PRAGMA table_info(invoices)').all();
   if (!invCols.some(c => c.name === 'client_snapshot')) db.exec("ALTER TABLE invoices ADD COLUMN client_snapshot TEXT DEFAULT '{}'");
@@ -468,6 +468,23 @@ function getClientProfile(id) {
   };
 }
 
+function checkPostUpdateNotification(currentVersion) {
+  if (!db) return { updated: false };
+  try {
+    const row = db.prepare(`SELECT last_installed_version FROM settings WHERE id = 1`).get();
+    const lastVer = row ? (row.last_installed_version || '') : '';
+    if (lastVer && lastVer !== currentVersion) {
+      db.prepare(`UPDATE settings SET last_installed_version = ? WHERE id = 1`).run(currentVersion);
+      return { updated: true, previousVersion: lastVer, currentVersion: currentVersion };
+    } else if (!lastVer) {
+      db.prepare(`UPDATE settings SET last_installed_version = ? WHERE id = 1`).run(currentVersion);
+    }
+  } catch (err) {
+    console.error('Update notification check error:', err.message);
+  }
+  return { updated: false, currentVersion: currentVersion };
+}
+
 function closeDatabase() {
   if (db) {
     try {
@@ -482,7 +499,7 @@ function closeDatabase() {
 
 module.exports = {
   initDatabase, getDbPath, closeDatabase,
-  getSettings, saveSettings, verifyAdminPin, saveSecuritySettings,
+  getSettings, saveSettings, verifyAdminPin, saveSecuritySettings, checkPostUpdateNotification,
   getAllClients, getClient, saveClient, deleteClient, getClientProfile,
   getAllInvoices, getInvoice, getNextInvoiceNumber, getNextInvoiceNumberObj,
   saveInvoice, saveInvoiceAndReturn, deleteInvoice, duplicateInvoice,

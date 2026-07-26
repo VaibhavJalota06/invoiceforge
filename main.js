@@ -303,6 +303,9 @@ ipcMain.handle('quit-and-install', () => {
 });
 
 ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('check-update-notification', () => {
+  return db.checkPostUpdateNotification(app.getVersion());
+});
 
 // ─── Storage Info IPC ──────────────────────────────────────────────────────────
 ipcMain.handle('get-data-paths', () => {

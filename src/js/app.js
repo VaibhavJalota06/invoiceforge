@@ -170,6 +170,27 @@ document.getElementById('btn-lock-app')?.addEventListener('click', async () => {
 
 window.lockAppScreen = lockAppScreen;
 
-// ── Start on Dashboard with Lock Check ────────────────────────────────────────
+async function checkPostUpdateNotificationOnLaunch() {
+  try {
+    const res = await window.api.checkUpdateNotification?.();
+    if (res?.updated) {
+      const msg = `🎉 Software Updated! InvoiceForge upgraded to Version ${res.currentVersion || ''}. All database records are intact.`;
+      showToast(msg, 'success');
+      if (typeof showConfirm === 'function') {
+        showConfirm(
+          '🎉 Software Updated!',
+          `InvoiceForge has been successfully updated to Version ${res.currentVersion || ''}!\n\nAll your client accounts, billed transactions, and settings have been safely preserved.`,
+          () => {},
+          false
+        );
+      }
+    }
+  } catch (err) {
+    console.error('Update notification check error:', err);
+  }
+}
+
+// ── Start on Dashboard with Lock & Update Checks ─────────────────────────────
 checkAppLockOnLaunch();
+checkPostUpdateNotificationOnLaunch();
 navigate('dashboard');
