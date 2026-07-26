@@ -1,0 +1,79 @@
+{
+  "name": "invoiceforge",
+  "version": "1.0.3",
+  "description": "Fully offline desktop invoice application for Windows",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "prebuild": "cmd /c \"taskkill /F /FI \\\"IMAGENAME eq InvoiceForge*\\\" 2>nul || exit 0\"",
+    "build": "electron-builder --win",
+    "build:portable": "electron-builder --win portable"
+  },
+  "keywords": [
+    "invoice",
+    "electron",
+    "offline",
+    "desktop"
+  ],
+  "author": "InvoiceForge",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "electron": "^29.4.6",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.invoiceforge.app",
+    "productName": "InvoiceForge",
+    "copyright": "Copyright © 2026",
+    "publish": {
+      "provider": "github",
+      "owner": "VaibhavJalota06",
+      "repo": "invoiceforge"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "db/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [],
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "InvoiceForge",
+      "installerIcon": "src/assets/icon.ico",
+      "uninstallerIcon": "src/assets/icon.ico"
+    }
+  }
+}

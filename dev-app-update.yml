@@ -1,0 +1,4 @@
+provider: github
+owner: VaibhavJalota06
+repo: invoiceforge
+updaterCacheDirName: invoiceforge-updater

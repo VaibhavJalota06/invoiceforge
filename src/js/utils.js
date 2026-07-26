@@ -1,0 +1,331 @@
+/**
+ * utils.js — Global utilities, icon set, modal, toast, and shared helpers
+ * Loaded before all page modules.
+ */
+
+// ── SVG Icon Library ──────────────────────────────────────────────────────────
+const ICONS = {
+  plus:  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  check: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`,
+  edit:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`,
+  trash: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>`,
+  copy:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>`,
+  pdf:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>`,
+  print: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`,
+  eye:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  x:     `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+};
+
+// ── Date Formatting ───────────────────────────────────────────────────────────
+function formatDate(dateStr) {
+  if (!dateStr) return '—';
+  try {
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  } catch { return dateStr; }
+}
+
+/** Returns today as YYYY-MM-DD */
+function todayStr() { return new Date().toISOString().slice(0, 10); }
+/** Alias used by pre-existing invoice-editor.js */
+function todayISO() { return todayStr(); }
+
+/**
+ * Add N days. Accepts two signatures:
+ *  addDays(n)         → from today
+ *  addDays(date, n)   → from given YYYY-MM-DD string
+ */
+function addDays(dateOrN, n) {
+  let base, days;
+  if (typeof dateOrN === 'number') { base = new Date(); days = dateOrN; }
+  else { base = new Date(dateOrN + 'T00:00:00'); days = n || 0; }
+  base.setDate(base.getDate() + days);
+  return base.toISOString().slice(0, 10);
+}
+
+/** Round to 2 decimal places */
+function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+/** Convert numeric amount into words (supports Indian Rupees & International formats) */
+function numberToWords(amount, currencyCode = 'INR') {
+  const num = Math.abs(parseFloat(amount)) || 0;
+  if (num === 0) return 'Zero';
+
+  const integerPart = Math.floor(num);
+  const decimalPart = Math.round((num - integerPart) * 100);
+
+  const units = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+    'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  function convertBelowThousand(n) {
+    let str = '';
+    if (n >= 100) {
+      str += units[Math.floor(n / 100)] + ' Hundred ';
+      n %= 100;
+    }
+    if (n >= 20) {
+      str += tens[Math.floor(n / 10)] + (n % 10 ? ' ' + units[n % 10] : '');
+    } else if (n > 0) {
+      str += units[n];
+    }
+    return str.trim();
+  }
+
+  let words = '';
+
+  if (currencyCode === 'INR') {
+    let n = integerPart;
+    const crore = Math.floor(n / 10000000);
+    n %= 10000000;
+    const lakh = Math.floor(n / 100000);
+    n %= 100000;
+    const thousand = Math.floor(n / 1000);
+    n %= 1000;
+
+    if (crore > 0) words += convertBelowThousand(crore) + ' Crore ';
+    if (lakh > 0) words += convertBelowThousand(lakh) + ' Lakh ';
+    if (thousand > 0) words += convertBelowThousand(thousand) + ' Thousand ';
+    if (n > 0) words += convertBelowThousand(n) + ' ';
+
+    words = words.trim() ? words.trim() + ' Rupees' : '';
+    if (decimalPart > 0) {
+      words += (words ? ' and ' : '') + convertBelowThousand(decimalPart) + ' Paise';
+    }
+  } else {
+    let n = integerPart;
+    const billion = Math.floor(n / 1000000000);
+    n %= 1000000000;
+    const million = Math.floor(n / 1000000);
+    n %= 1000000;
+    const thousand = Math.floor(n / 1000);
+    n %= 1000;
+
+    if (billion > 0) words += convertBelowThousand(billion) + ' Billion ';
+    if (million > 0) words += convertBelowThousand(million) + ' Million ';
+    if (thousand > 0) words += convertBelowThousand(thousand) + ' Thousand ';
+    if (n > 0) words += convertBelowThousand(n) + ' ';
+
+    const currName = currencyCode || 'Units';
+    words = words.trim() ? words.trim() + ' ' + currName : '';
+    if (decimalPart > 0) {
+      words += (words ? ' and ' : '') + convertBelowThousand(decimalPart) + ' Cents';
+    }
+  }
+
+  return words ? words + ' Only' : 'Zero';
+}
+
+// ── HTML Escape ───────────────────────────────────────────────────────────────
+function escHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Status Badge ──────────────────────────────────────────────────────────────
+function statusBadge(status) {
+  const map = { draft: 'badge-draft', unpaid: 'badge-unpaid', paid: 'badge-paid', overdue: 'badge-overdue' };
+  const cls = map[status] || 'badge-draft';
+  return `<span class="badge ${cls}">${escHtml(status)}</span>`;
+}
+
+// ── Browser Fallback Mock (allows testing directly in web browsers) ─────────────
+if (!window.api) {
+  window.api = {
+    getClients: async () => JSON.parse(localStorage.getItem('mock_clients') || '[]'),
+    getClient: async (id) => {
+      const clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
+      return clients.find(c => c.id == id) || null;
+    },
+    saveClient: async (data) => {
+      let clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
+      if (data.id) {
+        clients = clients.map(c => c.id == data.id ? { ...c, ...data } : c);
+      } else {
+        data.id = Date.now();
+        clients.push(data);
+      }
+      localStorage.setItem('mock_clients', JSON.stringify(clients));
+      return data;
+    },
+    deleteClient: async (id) => {
+      let clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
+      clients = clients.filter(c => c.id != id);
+      localStorage.setItem('mock_clients', JSON.stringify(clients));
+      return { success: true };
+    },
+    getInvoices: async () => JSON.parse(localStorage.getItem('mock_invoices') || '[]'),
+    getInvoice: async (id) => {
+      const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      return invs.find(i => i.id == id) || null;
+    },
+    saveInvoice: async (data) => {
+      let invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      if (data.id) {
+        invs = invs.map(i => i.id == data.id ? { ...i, ...data } : i);
+      } else {
+        data.id = Date.now();
+        invs.push(data);
+      }
+      localStorage.setItem('mock_invoices', JSON.stringify(invs));
+      return data;
+    },
+    deleteInvoice: async (id) => {
+      let invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      invs = invs.filter(i => i.id != id);
+      localStorage.setItem('mock_invoices', JSON.stringify(invs));
+      return { success: true };
+    },
+    getSettings: async () => JSON.parse(localStorage.getItem('mock_settings') || 'null') || {
+      company_name: 'InvoiceForge Demo',
+      invoice_prefix: 'INV-2026-',
+      invoice_counter: 1
+    },
+    saveSettings: async (s) => {
+      localStorage.setItem('mock_settings', JSON.stringify(s));
+      return s;
+    },
+    getDashboardStats: async () => {
+      const clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
+      const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      return { clientCount: clients.length, invoiceCount: invs.length, totalRevenue: 0, statusBreakdown: { unpaid: 0, paid: 0, overdue: 0 } };
+    },
+    getNextInvoiceNumberObj: async () => ({ invoiceNumber: 'INV-2026-001', counter: 1 }),
+    exportPdf: async () => window.print(),
+    printInvoice: async () => window.print(),
+    checkForUpdates: async () => ({ status: 'ok' }),
+    onUpdateStatus: () => {}
+  };
+}
+
+// ── Currency helpers ──────────────────────────────────────────────────────────
+function getCurrencySymbol(code) {
+  if (!code || typeof CURRENCIES === 'undefined') return '₹';
+  const found = CURRENCIES.find(c => c.code === code);
+  return found ? found.symbol : code;
+}
+
+function buildCurrencyOptions(selected) {
+  if (typeof CURRENCIES === 'undefined') return '';
+  return CURRENCIES.map(c =>
+    `<option value="${c.code}" ${c.code === selected ? 'selected' : ''}>${c.code} — ${escHtml(c.name)} (${escHtml(c.symbol)})</option>`
+  ).join('');
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+let _toastTimer;
+function showToast(message, type = 'success') {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `toast ${type}`;
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = 'toast hidden'; }, 3200);
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+/**
+ * Show the global modal.
+ * @param {string} title
+ * @param {string} bodyHtml
+ * @param {string} [sizeClass] - 'modal-lg', 'modal-xl', or ''
+ * @returns {{ close: Function }} — object with a close method
+ */
+function showModal(title, bodyHtml, sizeClass = '') {
+  const overlay = document.getElementById('modal-overlay');
+  const box = document.getElementById('modal-box');
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  const footerEl = document.getElementById('modal-footer');
+  const closeBtn = document.getElementById('modal-close');
+
+  if (!overlay || !box) return { close: () => {} };
+
+  if (titleEl) titleEl.textContent = title;
+  if (bodyEl) bodyEl.innerHTML = bodyHtml;
+  // Some packaged builds omit the legacy footer container. Dialog actions are
+  // rendered in bodyHtml, so the footer is optional.
+  if (footerEl) {
+    footerEl.innerHTML = '';
+    footerEl.style.display = 'none';
+  }
+  box.className = 'modal-box' + (sizeClass ? ' ' + sizeClass : '');
+  overlay.style.display = 'flex';
+  overlay.classList.remove('hidden');
+
+  const close = () => {
+    overlay.style.display = 'none';
+    overlay.classList.add('hidden');
+  };
+  if (closeBtn) closeBtn.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+
+  return { close };
+}
+
+/** Alias used by some modules */
+function openModal(opts) {
+  const overlay = document.getElementById('modal-overlay');
+  const box = document.getElementById('modal-box');
+  const titleEl = document.getElementById('modal-title');
+  const bodyEl = document.getElementById('modal-body');
+  const footerEl = document.getElementById('modal-footer');
+  const closeBtn = document.getElementById('modal-close');
+
+  if (!overlay || !box) return { close: () => {} };
+
+  if (titleEl) titleEl.textContent = opts.title || '';
+  if (bodyEl) bodyEl.innerHTML = opts.body || '';
+  if (footerEl) {
+    if (opts.footerHTML) {
+      footerEl.innerHTML = opts.footerHTML;
+      footerEl.style.display = 'flex';
+    } else {
+      footerEl.innerHTML = '';
+      footerEl.style.display = 'none';
+    }
+  }
+  box.className = 'modal-box' + (opts.wide ? ' modal-lg' : '') + (opts.full ? ' modal-xl' : '');
+
+  const close = () => {
+    overlay.style.display = 'none';
+    overlay.classList.add('hidden');
+  };
+  if (closeBtn) closeBtn.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+
+  overlay.style.display = 'flex';
+  overlay.classList.remove('hidden');
+
+  if (opts.onOpen) opts.onOpen(bodyEl);
+  return { close };
+}
+
+function closeModal() {
+  const overlay = document.getElementById('modal-overlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+    overlay.classList.add('hidden');
+  }
+}
+
+/**
+ * Show a destructive confirmation dialog.
+ */
+function showConfirm(title, message, onConfirm, danger = true) {
+  showModal(title, `
+    <p style="color:var(--text-2);font-size:14px;line-height:1.7">${message}</p>
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:20px">
+      <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn ${danger ? 'btn-danger' : 'btn-primary'}" id="confirm-action-btn">${danger ? ICONS.trash : ICONS.check} Confirm</button>
+    </div>
+  `);
+  document.getElementById('confirm-action-btn').onclick = () => {
+    closeModal();
+    onConfirm();
+  };
+}
+
+/** Alias */
+function confirmDialog(message, onYes, danger = false) {
+  showConfirm('Confirm', message, onYes, danger);
+}

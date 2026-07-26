@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>InvoiceForge — Professional Invoice Manager</title>
+  <meta name="description" content="Fully offline professional invoice management for your business" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="icon" type="image/png" href="assets/icon.png" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="app">
+
+    <!-- ── Top Navigation Bar ── -->
+    <header id="sidebar" class="topnav">
+      <div class="sidebar-brand">
+        <img src="assets/logo.png" class="brand-logo-img" alt="InvoiceForge Logo" />
+        <span class="brand-name">InvoiceForge</span>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="#" class="nav-item active" data-page="dashboard" id="nav-dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <rect x="3" y="3" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+            <rect x="13" y="3" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+            <rect x="3" y="13" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+            <rect x="13" y="13" width="8" height="8" rx="2" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>Dashboard</span>
+        </a>
+        <a href="#" class="nav-item" data-page="invoices" id="nav-invoices">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Invoices</span>
+        </a>
+        <a href="#" class="nav-item" data-page="clients" id="nav-clients">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            <circle cx="9" cy="7" r="4" stroke="currentColor" stroke-width="2"/>
+            <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span>Clients</span>
+        </a>
+        <a href="#" class="nav-item" data-page="settings" id="nav-settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>
+            <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <span>Settings</span>
+        </a>
+      </nav>
+      <div class="topnav-right">
+        <button class="btn btn-ghost btn-sm" id="btn-lock-app" title="Lock App Screen" style="display:none;align-items:center;gap:6px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          <span>Lock</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ── Main Content ── -->
+    <main id="main-content">
+      <div id="page-content">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Loading InvoiceForge…</p>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <!-- ── Lock Screen Overlay ── -->
+  <div id="lock-screen-overlay" class="lock-screen-overlay hidden">
+    <div class="lock-card">
+      <div class="lock-avatar" id="lock-admin-avatar">A</div>
+      <h2 id="lock-admin-name" class="lock-title">Admin</h2>
+      <p class="lock-subtitle">Enter PIN / Password to unlock InvoiceForge</p>
+      
+      <form id="lock-screen-form">
+        <div class="form-group" style="margin-bottom:16px">
+          <div style="position:relative">
+            <input class="form-input" id="lock-pin-input" type="password" placeholder="Enter PIN / Password" autofocus required style="padding-right:40px;text-align:center;font-size:16px;letter-spacing:2px;" />
+            <button type="button" id="btn-toggle-pin-visibility" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--text-3);cursor:pointer;" title="Toggle PIN visibility">👁️</button>
+          </div>
+        </div>
+        <div id="lock-error-msg" style="color:var(--danger);font-size:13px;margin-bottom:14px;display:none;"></div>
+        <button class="btn btn-primary" type="submit" style="width:100%;justify-content:center;padding:10px 16px;font-size:14px;">
+          Unlock InvoiceForge
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── Toast ── -->
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- ── Modal ── -->
+  <div id="modal-overlay" class="modal-overlay hidden">
+    <div id="modal-box" class="modal-box">
+      <div class="modal-header">
+        <h3 id="modal-title">Confirm</h3>
+        <button class="modal-close" id="modal-close">&times;</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+      <div id="modal-footer" class="modal-footer" style="display: none;"></div>
+    </div>
+  </div>
+
+  <!-- Scripts (load order matters) -->
+  <script src="js/currencies.js"></script>
+  <script src="js/utils.js"></script>
+  <script src="js/invoice-print.js"></script>
+  <script src="js/dashboard.js"></script>
+  <script src="js/clients.js"></script>
+  <script src="js/invoice-editor.js"></script>
+  <script src="js/invoices.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
