@@ -215,12 +215,19 @@ async function openProductModal(productId = null) {
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">${ICONS.check || ''} Save Product</button>
+        <button type="submit" class="btn btn-primary">${ICONS.check || ''} Save Product &amp; Close</button>
       </div>
     </form>
   `);
 
-  document.getElementById('product-form')?.addEventListener('submit', async (e) => {
+  const productForm = document.getElementById('product-form');
+  productForm?.addEventListener('keydown', (e) => {
+    // Enter is often used while typing inventory data. Do not let it
+    // accidentally submit and close the dialog; use the explicit save button.
+    if (e.key === 'Enter' && e.target.type !== 'submit') e.preventDefault();
+  });
+
+  productForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {
       id: document.getElementById('p-id').value ? Number(document.getElementById('p-id').value) : null,
@@ -280,12 +287,17 @@ async function openRestockModal(productId, type = 'IN') {
 
       <div style="display:flex;justify-content:flex-end;gap:10px;margin-top:10px">
         <button type="button" class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-        <button type="submit" class="btn btn-primary">${ICONS.check || ''} Save Stock Entry</button>
+        <button type="submit" class="btn btn-primary">${ICONS.check || ''} Save Stock Entry &amp; Close</button>
       </div>
     </form>
   `);
 
-  document.getElementById('restock-form')?.addEventListener('submit', async (e) => {
+  const restockForm = document.getElementById('restock-form');
+  restockForm?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && e.target.type !== 'submit') e.preventDefault();
+  });
+
+  restockForm?.addEventListener('submit', async (e) => {
     e.preventDefault();
     const tx = {
       product_id: productId,

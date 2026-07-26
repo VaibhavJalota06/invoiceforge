@@ -1,6 +1,6 @@
 {
   "name": "invoiceforge",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Fully offline desktop invoice application for Windows",
   "main": "main.js",
   "scripts": {
@@ -66,6 +66,7 @@
       "icon": "src/assets/icon.ico"
     },
     "nsis": {
+      "artifactName": "${productName}-Setup-${version}.${ext}",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
