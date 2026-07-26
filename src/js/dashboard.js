@@ -4,10 +4,20 @@
 
 async function renderDashboard() {
   const content = document.getElementById('page-content');
+  if (!content) return;
   content.innerHTML = `<div class="loading-state"><div class="spinner"></div></div>`;
 
-  const stats = await window.api.getDashboardStats();
-  const settings = await window.api.getSettings();
+  let stats = {};
+  let settings = {};
+  try {
+    stats = (await window.api.getDashboardStats()) || {};
+    settings = (await window.api.getSettings()) || {};
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+    stats = { totalThisMonth: 0, outstanding: 0, clientCount: 0, invoiceCount: 0, recent: [], statusBreakdown: [] };
+    settings = {};
+  }
+
   const defaultCurrency = settings.default_currency || 'INR';
   const curr = getCurrency(defaultCurrency);
 

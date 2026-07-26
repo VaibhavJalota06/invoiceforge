@@ -905,10 +905,19 @@ function getDashboardStats() {
   const monthStart = today.slice(0, 7) + '-01';
 
   // Auto-mark overdue
-  db.prepare(`
-    UPDATE invoices SET status = 'overdue', updated_at = ?
-    WHERE status = 'unpaid' AND due_date < ? AND due_date IS NOT NULL AND due_date != ''
-  `).run(new Date().toISOString(), today);
+  try {
+    db.prepare(`
+      UPDATE invoices SET status = 'overdue', updated_at = ?
+      WHERE status = 'unpaid' AND due_date < ? AND due_date IS NOT NULL AND due_date != ''
+    `).run(new Date().toISOString(), today);
+  } catch (e) {
+    try {
+      db.prepare(`
+        UPDATE invoices SET status = 'overdue'
+        WHERE status = 'unpaid' AND due_date < ? AND due_date IS NOT NULL AND due_date != ''
+      `).run(today);
+    } catch (err) {}
+  }
 
   const totalThisMonth = db.prepare(`
     SELECT COALESCE(SUM(grand_total), 0) AS total FROM invoices
