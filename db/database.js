@@ -327,10 +327,18 @@ function saveSalesReturn(returnData) {
         INSERT INTO sales_returns (return_number, invoice_id, invoice_number, client_id, client_name, return_date, reason, subtotal, tax_amount, grand_total, refund_status, notes)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        returnNo, invoice_id || 0, invoice_number || '', client_id || 0, client_name || '',
-        return_date || new Date().toISOString().slice(0, 10), reason || 'Customer Return',
-        Number(subtotal) || 0, Number(tax_amount) || 0, Number(grand_total) || 0,
-        refund_status || 'credit_note', notes || ''
+        returnNo,
+        invoice_id ? Number(invoice_id) : null,
+        invoice_number || '',
+        client_id ? Number(client_id) : null,
+        client_name || '',
+        return_date || new Date().toISOString().slice(0, 10),
+        reason || 'Customer Return',
+        Number(subtotal) || 0,
+        Number(tax_amount) || 0,
+        Number(grand_total) || 0,
+        refund_status || 'credit_note',
+        notes || ''
       );
       retId = res.lastInsertRowid;
 
@@ -341,10 +349,17 @@ function saveSalesReturn(returnData) {
         SET invoice_id = ?, invoice_number = ?, client_id = ?, client_name = ?, return_date = ?, reason = ?, subtotal = ?, tax_amount = ?, grand_total = ?, refund_status = ?
         WHERE id = ?
       `).run(
-        invoice_id || 0, invoice_number || '', client_id || 0, client_name || '',
-        return_date || new Date().toISOString().slice(0, 10), reason || 'Customer Return',
-        Number(subtotal) || 0, Number(tax_amount) || 0, Number(grand_total) || 0,
-        refund_status || 'credit_note', retId
+        invoice_id ? Number(invoice_id) : null,
+        invoice_number || '',
+        client_id ? Number(client_id) : null,
+        client_name || '',
+        return_date || new Date().toISOString().slice(0, 10),
+        reason || 'Customer Return',
+        Number(subtotal) || 0,
+        Number(tax_amount) || 0,
+        Number(grand_total) || 0,
+        refund_status || 'credit_note',
+        retId
       );
 
       const oldItems = db.prepare(`SELECT * FROM sales_return_items WHERE return_id = ?`).all(retId);
