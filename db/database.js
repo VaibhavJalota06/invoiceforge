@@ -243,10 +243,10 @@ function verifyAdminPin(inputPin) {
   }
 }
 
-function saveSecuritySettings(data) {
-  const enabled = data.enabled ? 1 : 0;
-  const adminName = String(data.adminName || 'Admin').trim();
-  const rawPin = String(data.pin || '').trim();
+function saveSecuritySettings(data = {}) {
+  const enabled = (data.enabled || data.app_lock_enabled) ? 1 : 0;
+  const adminName = String(data.adminName || data.admin_name || 'Admin').trim();
+  const rawPin = String(data.pin || data.admin_pin || '').trim();
 
   let finalPin = rawPin;
   if (enabled && rawPin) {
@@ -691,7 +691,13 @@ function getStockTransactions(productId) {
   `).all();
 }
 
-function deductStockForInvoice(invoiceId, items, clientId) {
+function deductStockForInvoice(invoiceId, items = null, clientId = 0) {
+  if (!items || !items.length) {
+    const inv = getInvoice(invoiceId);
+    if (!inv) return;
+    items = inv.items || [];
+    clientId = clientId || inv.client_id || 0;
+  }
   if (!items || !items.length) return;
   items.forEach(item => {
     let p = null;

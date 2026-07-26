@@ -64,6 +64,8 @@ async function openInvoiceEditor(invoiceId, options = {}) {
       </div>
       <div class="invoice-view-actions">
         ${isFinalized ? `
+          <button class="btn btn-ghost" id="btn-share-wa" style="color:#25D366">${ICONS.whatsapp} WhatsApp</button>
+          <button class="btn btn-ghost" id="btn-share-email" style="color:#3b82f6">${ICONS.mail} Email</button>
           <button class="btn btn-ghost" id="btn-print">${ICONS.print} Print</button>
           <button class="btn btn-secondary" id="btn-pdf">${ICONS.pdf} Export PDF</button>
         ` : ''}
@@ -229,9 +231,11 @@ async function openInvoiceEditor(invoiceId, options = {}) {
     _saveInvoice(st === 'draft' ? 'unpaid' : st, nextCounter);
   });
 
-  if (isFinalized) {
+  if (isFinalized && invoice?.id) {
     document.getElementById('btn-pdf')?.addEventListener('click', _exportPdf);
     document.getElementById('btn-print')?.addEventListener('click', _printInvoice);
+    document.getElementById('btn-share-wa')?.addEventListener('click', () => shareInvoiceOnWhatsApp(invoice.id));
+    document.getElementById('btn-share-email')?.addEventListener('click', () => shareInvoiceViaEmail(invoice.id));
   }
 }
 

@@ -52,6 +52,11 @@ contextBridge.exposeInMainWorld('api', {
   exportMonthlyDataPackage: (filters) => ipcRenderer.invoke('export-monthly-data-package', filters),
   importMonthlyDataPackage: () => ipcRenderer.invoke('import-monthly-data-package'),
 
+  // Sharing & Deep Links
+  shareInvoiceWhatsApp: (payload) => ipcRenderer.invoke('share-invoice-whatsapp', payload),
+  shareInvoiceEmail: (payload) => ipcRenderer.invoke('share-invoice-email', payload),
+  copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
+
   // Auto-Updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),

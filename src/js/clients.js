@@ -284,8 +284,12 @@ async function openClientProfile(clientId) {
                    <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${curr.symbol} ${Number(inv.grand_total||0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></td>
                    <td>${statusBadge(inv.status)}</td>
                    <td style="text-align:right">
-                     <button class="btn btn-secondary btn-sm btn-profile-view-inv" data-id="${inv.id}" title="Open Invoice Editor">${ICONS.eye || ''} View</button>
-                   </td>
+                      <div style="display:flex;justify-content:flex-end;gap:4px">
+                        <button class="btn-icon btn-profile-wa-inv" data-id="${inv.id}" title="Share on WhatsApp" style="color:#25D366">${ICONS.whatsapp}</button>
+                        <button class="btn-icon btn-profile-email-inv" data-id="${inv.id}" title="Share via Email" style="color:#3b82f6">${ICONS.mail}</button>
+                        <button class="btn btn-secondary btn-sm btn-profile-view-inv" data-id="${inv.id}" title="Open Invoice Editor">${ICONS.eye || ''} View</button>
+                      </div>
+                    </td>
                  </tr>
                `).join('')}
              </tbody>
@@ -391,6 +395,18 @@ async function openClientProfile(clientId) {
         closeModal();
         navigate('invoices');
         setTimeout(() => openInvoiceEditor(Number(btn.dataset.id)), 50);
+      });
+    });
+
+    document.querySelectorAll('.btn-profile-wa-inv').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (typeof shareInvoiceOnWhatsApp === 'function') shareInvoiceOnWhatsApp(Number(btn.dataset.id));
+      });
+    });
+
+    document.querySelectorAll('.btn-profile-email-inv').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (typeof shareInvoiceViaEmail === 'function') shareInvoiceViaEmail(Number(btn.dataset.id));
       });
     });
 

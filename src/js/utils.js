@@ -13,7 +13,9 @@ const ICONS = {
   pdf:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 18 15 15"/></svg>`,
   print: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>`,
   eye:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
-  x:     `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`
+  x:     `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  whatsapp: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>`,
+  mail:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`
 };
 
 // ── Date Formatting ───────────────────────────────────────────────────────────
@@ -114,6 +116,28 @@ function numberToWords(amount, currencyCode = 'INR') {
   }
 
   return words ? words + ' Only' : 'Zero';
+}
+
+function generateInvoiceShareText(invoice, settings = {}, client = {}) {
+  const invNo = invoice.invoice_number || 'Draft';
+  const total = Number(invoice.grand_total || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  const curr = typeof getCurrency === 'function' ? getCurrency(invoice.currency || settings.default_currency || 'INR') : { symbol: '₹' };
+  const clientName = client.name || invoice.client_name || 'Valued Customer';
+  const companyName = settings.company_name || 'InvoiceForge';
+
+  let text = `Hello *${clientName}*,\n\n`;
+  text += `Here are the details of your invoice *#${invNo}* from *${companyName}*:\n`;
+  text += `• *Invoice Date:* ${invoice.invoice_date || ''}\n`;
+  if (invoice.due_date) text += `• *Due Date:* ${invoice.due_date}\n`;
+  text += `• *Grand Total:* ${curr.symbol} ${total}\n`;
+  text += `• *Status:* ${String(invoice.status || 'unpaid').toUpperCase()}\n\n`;
+
+  if (settings.bank_details) {
+    text += `*Payment / Bank Details:*\n${settings.bank_details.trim()}\n\n`;
+  }
+
+  text += `Thank you for your business!`;
+  return text;
 }
 
 // ── HTML Escape ───────────────────────────────────────────────────────────────

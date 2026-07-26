@@ -48,6 +48,8 @@ function _renderInvoiceList(invoices, clients) {
             : `<button class="btn-icon btn-mark-inv" data-id="${inv.id}" data-status="unpaid" title="Mark as Unpaid">${ICONS.x}</button>`
           }
           <button class="btn-icon btn-dup-inv" data-id="${inv.id}" title="Duplicate">${ICONS.copy}</button>
+          <button class="btn-icon btn-wa-inv" data-id="${inv.id}" title="Share on WhatsApp" style="color:#25D366">${ICONS.whatsapp}</button>
+          <button class="btn-icon btn-email-inv" data-id="${inv.id}" title="Share via Email" style="color:#3b82f6">${ICONS.mail}</button>
           <button class="btn-icon btn-pdf-inv" data-id="${inv.id}" title="Export PDF" style="color:var(--accent)">${ICONS.pdf}</button>
           <button class="btn-icon danger btn-del-inv" data-id="${inv.id}" data-num="${_iEsc(inv.invoice_number)}" title="Delete">${ICONS.trash}</button>
         </div>
@@ -129,6 +131,14 @@ function _renderInvoiceList(invoices, clients) {
 
   content.querySelectorAll('.btn-pdf-inv').forEach(btn => {
     btn.addEventListener('click', () => exportInvoicePdf(Number(btn.dataset.id), btn));
+  });
+
+  content.querySelectorAll('.btn-wa-inv').forEach(btn => {
+    btn.addEventListener('click', () => shareInvoiceOnWhatsApp(Number(btn.dataset.id)));
+  });
+
+  content.querySelectorAll('.btn-email-inv').forEach(btn => {
+    btn.addEventListener('click', () => shareInvoiceViaEmail(Number(btn.dataset.id)));
   });
 
   content.querySelectorAll('.btn-del-inv').forEach(btn => {
@@ -231,7 +241,57 @@ function _iEsc(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+async function shareInvoiceOnWhatsApp(invoiceId) {
+  try {
+    const inv = await window.api.getInvoice(invoiceId);
+    if (!inv) { showToast('Invoice not found', 'error'); return; }
+    const settings = (await window.api.getSettings()) || {};
+    const text = generateInvoiceShareText(inv, settings, { name: inv.client_name });
+    
+    window.api.copyToClipboard(text);
+    
+    const res = await window.api.shareInvoiceWhatsApp({
+      phone: inv.client_phone || '',
+      text
+    });
+
+    if (res?.success) {
+      showToast('Opening WhatsApp… Invoice summary copied to clipboard!', 'success');
+    } else {
+      showToast('Could not open WhatsApp: ' + (res?.reason || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    showToast('Failed to share invoice: ' + err.message, 'error');
+  }
+}
+
+async function shareInvoiceViaEmail(invoiceId) {
+  try {
+    const inv = await window.api.getInvoice(invoiceId);
+    if (!inv) { showToast('Invoice not found', 'error'); return; }
+    const settings = (await window.api.getSettings()) || {};
+    const text = generateInvoiceShareText(inv, settings, { name: inv.client_name });
+    const subject = `Invoice #${inv.invoice_number || ''} from ${settings.company_name || 'InvoiceForge'}`;
+
+    const res = await window.api.shareInvoiceEmail({
+      email: inv.client_email || '',
+      subject,
+      body: text
+    });
+
+    if (res?.success) {
+      showToast('Opening default Email client…', 'info');
+    } else {
+      showToast('Could not open email client: ' + (res?.reason || 'Unknown error'), 'error');
+    }
+  } catch (err) {
+    showToast('Failed to share via email: ' + err.message, 'error');
+  }
+}
+
 window.renderInvoices = renderInvoices;
+window.shareInvoiceOnWhatsApp = shareInvoiceOnWhatsApp;
+window.shareInvoiceViaEmail = shareInvoiceViaEmail;
 window.markInvoice = markInvoice;
 window.dupInvoice = dupInvoice;
 window.exportInvoicePdf = exportInvoicePdf;

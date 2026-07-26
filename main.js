@@ -520,3 +520,44 @@ ipcMain.handle('import-monthly-data-package', async () => {
     return { success: false, reason: err.message };
   }
 });
+
+// ─── WhatsApp & Email Sharing IPC ──────────────────────────────────────────────
+ipcMain.handle('share-invoice-whatsapp', async (_e, { phone, text }) => {
+  assertUnlocked();
+  try {
+    const cleanPhone = String(phone || '').replace(/[^\d]/g, '');
+    const encodedText = encodeURIComponent(text || '');
+    const url = cleanPhone
+      ? `https://api.whatsapp.com/send?phone=${cleanPhone}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+    
+    await shell.openExternal(url);
+    return { success: true, url };
+  } catch (err) {
+    console.error('WhatsApp share error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('share-invoice-email', async (_e, { email, subject, body }) => {
+  assertUnlocked();
+  try {
+    const cleanEmail = String(email || '').trim();
+    const encodedSubject = encodeURIComponent(subject || 'Invoice');
+    const encodedBody = encodeURIComponent(body || '');
+    const mailtoUrl = `mailto:${cleanEmail}?subject=${encodedSubject}&body=${encodedBody}`;
+
+    await shell.openExternal(mailtoUrl);
+    return { success: true, url: mailtoUrl };
+  } catch (err) {
+    console.error('Email share error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('copy-to-clipboard', (_e, text) => {
+  assertUnlocked();
+  const { clipboard } = require('electron');
+  clipboard.writeText(String(text || ''));
+  return { success: true };
+});
