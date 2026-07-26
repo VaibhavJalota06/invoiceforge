@@ -4,14 +4,15 @@
  */
 
 const PAGES = {
-  dashboard: () => renderDashboard(),
-  invoices:  () => renderInvoices(),
-  clients:   () => renderClients(),
-  purchases: () => renderPurchases(),
-  vendors:   () => renderVendors(),
-  stock:     () => renderStock(),
-  reports:   () => renderReports(),
-  settings:  () => renderSettings()
+  dashboard:       () => renderDashboard(),
+  invoices:        () => renderInvoices(),
+  'sales-returns': () => renderSalesReturns(),
+  clients:         () => renderClients(),
+  purchases:       () => renderPurchases(),
+  vendors:         () => renderVendors(),
+  stock:           () => renderStock(),
+  reports:         () => renderReports(),
+  settings:        () => renderSettings()
 };
 
 let currentPage = null;

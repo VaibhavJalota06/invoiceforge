@@ -176,7 +176,34 @@ function createSchema() {
     `ALTER TABLE settings ADD COLUMN active_user_id INTEGER DEFAULT 1`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
     `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
-    `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`,
+    `ALTER TABLE settings ADD COLUMN return_prefix TEXT DEFAULT 'RET-2026-'`,
+    `ALTER TABLE settings ADD COLUMN return_counter INTEGER DEFAULT 1`,
+    `CREATE TABLE IF NOT EXISTS sales_returns (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_number TEXT NOT NULL UNIQUE,
+      invoice_id INTEGER REFERENCES invoices(id) ON DELETE SET NULL,
+      invoice_number TEXT DEFAULT '',
+      client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+      client_name TEXT DEFAULT '',
+      return_date TEXT NOT NULL,
+      reason TEXT DEFAULT 'Customer Return',
+      subtotal REAL DEFAULT 0,
+      tax_amount REAL DEFAULT 0,
+      grand_total REAL DEFAULT 0,
+      refund_status TEXT DEFAULT 'credit_note',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS sales_return_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      return_id INTEGER NOT NULL REFERENCES sales_returns(id) ON DELETE CASCADE,
+      product_id INTEGER DEFAULT 0,
+      description TEXT DEFAULT '',
+      unit TEXT DEFAULT 'Pcs',
+      quantity REAL DEFAULT 1,
+      rate REAL DEFAULT 0,
+      amount REAL DEFAULT 0
+    )`,
     `CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -229,6 +256,153 @@ function saveSettings(data) {
   db.prepare(`UPDATE settings SET ${fields} WHERE id = 1`).run(data);
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
   return true;
+}
+
+// ── Sales Returns & Credit Notes CRUD ──────────────────────────────────────────
+function getNextReturnNumberObj() {
+  const settings = getSettings();
+  const prefix = settings.return_prefix || 'RET-2026-';
+  const counter = Number(settings.return_counter) || 1;
+  const numStr = String(counter).padStart(3, '0');
+  return { prefix, counter, fullNumber: `${prefix}${numStr}` };
+}
+
+function getAllSalesReturns(filters = {}) {
+  let sql = `
+    SELECT r.*, c.name as client_name_db
+    FROM sales_returns r
+    LEFT JOIN clients c ON r.client_id = c.id
+    WHERE 1=1
+  `;
+  const params = [];
+
+  if (filters.search) {
+    sql += ` AND (r.return_number LIKE ? OR r.invoice_number LIKE ? OR r.client_name LIKE ? OR c.name LIKE ?)`;
+    const term = `%${filters.search}%`;
+    params.push(term, term, term, term);
+  }
+  if (filters.status) {
+    sql += ` AND r.refund_status = ?`;
+    params.push(filters.status);
+  }
+
+  sql += ` ORDER BY r.id DESC`;
+  const rows = db.prepare(sql).all(...params);
+
+  return rows.map(r => ({
+    ...r,
+    client_name: r.client_name || r.client_name_db || 'Walk-in Customer'
+  }));
+}
+
+function getSalesReturn(id) {
+  const ret = db.prepare(`
+    SELECT r.*, c.name as client_name_db
+    FROM sales_returns r
+    LEFT JOIN clients c ON r.client_id = c.id
+    WHERE r.id = ?
+  `).get(id);
+  if (!ret) return null;
+
+  const items = db.prepare(`SELECT * FROM sales_return_items WHERE return_id = ?`).all(id);
+  return {
+    ...ret,
+    client_name: ret.client_name || ret.client_name_db || 'Walk-in Customer',
+    items
+  };
+}
+
+function saveSalesReturn(returnData) {
+  const { id, invoice_id, invoice_number, client_id, client_name, return_date, reason, subtotal, tax_amount, grand_total, refund_status, notes, items } = returnData;
+
+  const run = db.transaction(() => {
+    let retId = id;
+    let returnNo = returnData.return_number;
+
+    if (!retId) {
+      const nextObj = getNextReturnNumberObj();
+      returnNo = nextObj.fullNumber;
+
+      const res = db.prepare(`
+        INSERT INTO sales_returns (return_number, invoice_id, invoice_number, client_id, client_name, return_date, reason, subtotal, tax_amount, grand_total, refund_status, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        returnNo, invoice_id || 0, invoice_number || '', client_id || 0, client_name || '',
+        return_date || new Date().toISOString().slice(0, 10), reason || 'Customer Return',
+        Number(subtotal) || 0, Number(tax_amount) || 0, Number(grand_total) || 0,
+        refund_status || 'credit_note', notes || ''
+      );
+      retId = res.lastInsertRowid;
+
+      db.prepare(`UPDATE settings SET return_counter = return_counter + 1 WHERE id = 1`).run();
+    } else {
+      db.prepare(`
+        UPDATE sales_returns
+        SET invoice_id = ?, invoice_number = ?, client_id = ?, client_name = ?, return_date = ?, reason = ?, subtotal = ?, tax_amount = ?, grand_total = ?, refund_status = ?
+        WHERE id = ?
+      `).run(
+        invoice_id || 0, invoice_number || '', client_id || 0, client_name || '',
+        return_date || new Date().toISOString().slice(0, 10), reason || 'Customer Return',
+        Number(subtotal) || 0, Number(tax_amount) || 0, Number(grand_total) || 0,
+        refund_status || 'credit_note', retId
+      );
+
+      const oldItems = db.prepare(`SELECT * FROM sales_return_items WHERE return_id = ?`).all(retId);
+      for (const item of oldItems) {
+        if (item.product_id > 0 && item.quantity > 0) {
+          db.prepare(`UPDATE products SET current_stock = current_stock - ? WHERE id = ?`).run(item.quantity, item.product_id);
+        }
+      }
+      db.prepare(`DELETE FROM sales_return_items WHERE return_id = ?`).run(retId);
+    }
+
+    if (Array.isArray(items)) {
+      const stmt = db.prepare(`
+        INSERT INTO sales_return_items (return_id, product_id, description, unit, quantity, rate, amount)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of items) {
+        const qty = Number(item.quantity) || 0;
+        const pId = Number(item.product_id) || 0;
+        stmt.run(retId, pId, item.description || '', item.unit || 'Pcs', qty, Number(item.rate) || 0, Number(item.amount) || 0);
+
+        if (pId > 0 && qty > 0) {
+          db.prepare(`UPDATE products SET current_stock = current_stock + ? WHERE id = ?`).run(qty, pId);
+          try {
+            db.prepare(`
+              INSERT INTO stock_transactions (product_id, type, quantity, reference_type, reference_id, client_id, notes)
+              VALUES (?, 'IN', ?, 'RETURN', ?, ?, ?)
+            `).run(pId, qty, retId, client_id || 0, `Sales Return #${returnNo}`);
+          } catch(e) {}
+        }
+      }
+    }
+
+    return retId;
+  });
+
+  const savedId = run();
+  return getSalesReturn(savedId);
+}
+
+function deleteSalesReturn(id) {
+  const ret = getSalesReturn(id);
+  if (!ret) return { success: false, reason: 'Sales return not found' };
+
+  db.transaction(() => {
+    if (Array.isArray(ret.items)) {
+      for (const item of ret.items) {
+        if (item.product_id > 0 && item.quantity > 0) {
+          db.prepare(`UPDATE products SET current_stock = current_stock - ? WHERE id = ?`).run(item.quantity, item.product_id);
+        }
+      }
+    }
+    db.prepare(`DELETE FROM sales_return_items WHERE return_id = ?`).run(id);
+    db.prepare(`DELETE FROM sales_returns WHERE id = ?`).run(id);
+  })();
+
+  return { success: true };
 }
 
 // ── Personalized Multi-User Management Functions ────────────────────────────────
@@ -1896,5 +2070,6 @@ module.exports = {
   deductStockForInvoice, restoreStockForInvoice, addStockForPurchase, restoreStockForPurchase,
   getFinancialReportData, getBalanceSheet, getMonthlyStockReport, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
   exportMonthlyDataPackage, importMonthlyDataPackage,
-  getAllUsers, getUser, getActiveUser, saveUser, deleteUser, switchActiveUser
+  getAllUsers, getUser, getActiveUser, saveUser, deleteUser, switchActiveUser,
+  getAllSalesReturns, getSalesReturn, getNextReturnNumberObj, saveSalesReturn, deleteSalesReturn
 };

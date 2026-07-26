@@ -47,6 +47,7 @@ function _renderInvoiceList(invoices, clients) {
             ? `<button class="btn-icon btn-mark-inv" data-id="${inv.id}" data-status="paid" title="Mark as Paid" style="color:var(--success)">${ICONS.check}</button>`
             : `<button class="btn-icon btn-mark-inv" data-id="${inv.id}" data-status="unpaid" title="Mark as Unpaid">${ICONS.x}</button>`
           }
+          <button class="btn-icon btn-return-inv" data-id="${inv.id}" title="Create Sales Return / Credit Note" style="color:var(--warning)">🔄</button>
           <button class="btn-icon btn-dup-inv" data-id="${inv.id}" title="Duplicate">${ICONS.copy}</button>
           <button class="btn-icon btn-wa-inv" data-id="${inv.id}" title="Share on WhatsApp" style="color:#25D366">${ICONS.whatsapp}</button>
           <button class="btn-icon btn-email-inv" data-id="${inv.id}" title="Share via Email" style="color:#3b82f6">${ICONS.mail}</button>
@@ -123,6 +124,15 @@ function _renderInvoiceList(invoices, clients) {
 
   content.querySelectorAll('.btn-mark-inv').forEach(btn => {
     btn.addEventListener('click', () => markInvoice(Number(btn.dataset.id), btn.dataset.status, btn));
+  });
+
+  content.querySelectorAll('.btn-return-inv').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const invId = Number(btn.dataset.id);
+      if (typeof openSalesReturnModal === 'function') {
+        openSalesReturnModal(invId);
+      }
+    });
   });
 
   content.querySelectorAll('.btn-dup-inv').forEach(btn => {

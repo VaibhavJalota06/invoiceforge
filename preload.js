@@ -77,6 +77,13 @@ contextBridge.exposeInMainWorld('api', {
   deleteUser: (id) => ipcRenderer.invoke('delete-user', id),
   switchActiveUser: (userId, pinInput) => ipcRenderer.invoke('switch-active-user', userId, pinInput),
 
+  // Sales Returns & Credit Notes
+  getAllSalesReturns: (filters) => ipcRenderer.invoke('get-all-sales-returns', filters),
+  getSalesReturn: (id) => ipcRenderer.invoke('get-sales-return', id),
+  getNextReturnNumber: () => ipcRenderer.invoke('get-next-return-number'),
+  saveSalesReturn: (returnData) => ipcRenderer.invoke('save-sales-return', returnData),
+  deleteSalesReturn: (id) => ipcRenderer.invoke('delete-sales-return', id),
+
   // Sharing & Deep Links
   shareInvoiceWhatsApp: (payload) => ipcRenderer.invoke('share-invoice-whatsapp', payload),
   shareInvoiceEmail: (payload) => ipcRenderer.invoke('share-invoice-email', payload),

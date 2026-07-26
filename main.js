@@ -490,6 +490,13 @@ ipcMain.handle('save-user', (_e, userData) => { assertUnlocked(); return db.save
 ipcMain.handle('delete-user', (_e, id) => { assertUnlocked(); return db.deleteUser(id); });
 ipcMain.handle('switch-active-user', (_e, userId, pinInput) => { assertUnlocked(); return db.switchActiveUser(userId, pinInput); });
 
+// ─── Sales Returns & Credit Notes IPC ──────────────────────────────────────────
+ipcMain.handle('get-all-sales-returns', (_e, filters) => { assertUnlocked(); return db.getAllSalesReturns(filters); });
+ipcMain.handle('get-sales-return', (_e, id) => { assertUnlocked(); return db.getSalesReturn(id); });
+ipcMain.handle('get-next-return-number', () => { assertUnlocked(); return db.getNextReturnNumberObj(); });
+ipcMain.handle('save-sales-return', (_e, returnData) => { assertUnlocked(); return db.saveSalesReturn(returnData); });
+ipcMain.handle('delete-sales-return', (_e, id) => { assertUnlocked(); return db.deleteSalesReturn(id); });
+
 ipcMain.handle('export-financial-csv', async (_e, filters, type) => {
   assertUnlocked();
   try {
