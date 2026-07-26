@@ -174,6 +174,14 @@ function createSchema() {
     `ALTER TABLE settings ADD COLUMN purchase_prefix TEXT DEFAULT 'PUR-2026-'`,
     `ALTER TABLE settings ADD COLUMN purchase_counter INTEGER DEFAULT 1`,
     `ALTER TABLE settings ADD COLUMN active_user_id INTEGER DEFAULT 1`,
+    `ALTER TABLE invoices ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))`,
+    `ALTER TABLE invoices ADD COLUMN client_name TEXT DEFAULT ''`,
+    `ALTER TABLE purchases ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))`,
+    `ALTER TABLE purchases ADD COLUMN vendor_name TEXT DEFAULT ''`,
+    `ALTER TABLE clients ADD COLUMN company_name TEXT DEFAULT ''`,
+    `ALTER TABLE clients ADD COLUMN address TEXT DEFAULT ''`,
+    `ALTER TABLE vendors ADD COLUMN company_name TEXT DEFAULT ''`,
+    `ALTER TABLE vendors ADD COLUMN address TEXT DEFAULT ''`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
     `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
     `ALTER TABLE settings ADD COLUMN return_prefix TEXT DEFAULT 'RET-2026-'`,
@@ -681,10 +689,19 @@ function deleteClient(id) {
 function getAllInvoices(filters) {
   // Auto-mark overdue first
   const today = new Date().toISOString().slice(0, 10);
-  db.prepare(`
-    UPDATE invoices SET status = 'overdue', updated_at = ?
-    WHERE status = 'unpaid' AND due_date < ? AND due_date IS NOT NULL AND due_date != ''
-  `).run(new Date().toISOString(), today);
+  try {
+    db.prepare(`
+      UPDATE invoices SET status = 'overdue', updated_at = ?
+      WHERE status = 'unpaid' AND due_date < ? AND due_date IS NOT NULL AND due_date != ''
+    `).run(new Date().toISOString(), today);
+  } catch (e) {
+    try {
+      db.prepare(`
+        UPDATE invoices SET status = 'overdue'
+        WHERE status = 'unpaid' AND due_date < ? AND due_date IS NOT NULL AND due_date != ''
+      `).run(today);
+    } catch (err) {}
+  }
 
   let query = `
     SELECT i.*, c.name AS client_name, c.company_name AS client_company
