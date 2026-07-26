@@ -17,7 +17,26 @@ async function renderSettings() {
       <button class="btn btn-primary" id="btn-save-settings">${ICONS.check} Save Changes</button>
     </div>
 
-    <form id="settings-form">      <!-- Corporate Profile -->
+    <form id="settings-form">
+      <!-- Software Lifecycle & Version Status (Top Card) -->
+      <div class="card" style="margin-bottom:18px;background:linear-gradient(135deg, var(--bg-2) 0%, var(--bg-3) 100%);border:1px solid var(--border-light)">
+        <div class="form-section-title" style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+          <span>Software Version &amp; Lifecycle Management</span>
+          <span class="badge badge-success" id="settings-version-badge" style="font-size:12px;padding:4px 10px;background:var(--success-bg);color:var(--success);border-radius:20px;font-weight:600">Checking version…</span>
+        </div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:14px;line-height:1.6">
+          InvoiceForge Enterprise Edition is running. Updates check automatically on application launch.
+        </p>
+        <div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg-4);padding:12px 16px;border-radius:8px;border:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:10px;height:10px;border-radius:50%;background:var(--success);box-shadow:0 0 10px var(--success)"></span>
+            <span id="update-status-label" style="font-size:13px;color:var(--text);font-weight:600">Checking installed version…</span>
+          </div>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-check-updates">Check for Updates</button>
+        </div>
+      </div>
+
+      <!-- Corporate Profile -->
       <div class="card" style="margin-bottom:18px">
         <div class="form-section-title">Corporate Profile &amp; Business Metadata</div>
 
@@ -98,8 +117,8 @@ async function renderSettings() {
           </div>
           <div class="form-group">
             <label class="form-label" for="s-prefix">Transaction Prefix Code</label>
-            <input class="form-input" id="s-prefix" type="text" placeholder="INV" value="${_esc(settings.invoice_prefix || 'INV')}">
-            <small style="color:var(--text-3);font-size:11.5px;margin-top:3px;display:block">Preview: ${settings.invoice_prefix || 'INV'}-2026-001</small>
+            <input class="form-input" id="s-prefix" type="text" placeholder="INV" value="${_esc((settings.invoice_prefix || 'INV').replace(/-?\d{4}-?$/, '').replace(/-+$/, '') || 'INV')}">
+            <small style="color:var(--text-3);font-size:11.5px;margin-top:3px;display:block">Preview: ${(_esc((settings.invoice_prefix || 'INV').replace(/-?\d{4}-?$/, '').replace(/-+$/, '') || 'INV'))}-${new Date().getFullYear()}-001</small>
           </div>
         </div>
 
@@ -166,18 +185,6 @@ async function renderSettings() {
           <input class="form-input" id="storage-db-path" type="text" readonly style="background:var(--bg-3);color:var(--text-2);cursor:default" value="Loading…">
         </div>
         <button type="button" class="btn btn-secondary" id="btn-open-data-dir">${ICONS.external || ''} Open Local Storage Directory</button>
-      </div>
-
-      <!-- Software Lifecycle & Version Management -->
-      <div class="card" style="margin-bottom:18px">
-        <div class="form-section-title">Software Lifecycle &amp; Cloud Version Management</div>
-        <p style="font-size:13px;color:var(--text-2);margin-bottom:14px;line-height:1.6">
-          Software updates are checked on application launch. When a new version is ready, you can update with a single click.
-        </p>
-        <div style="display:flex;align-items:center;gap:12px">
-          <button type="button" class="btn btn-secondary" id="btn-check-updates">Check for Updates</button>
-          <span id="update-status-label" style="font-size:12.5px;color:var(--text-3)">Checking installed version…</span>
-        </div>
       </div>
 
     </form>
@@ -305,6 +312,8 @@ async function renderSettings() {
   const statusLabel = document.getElementById('update-status-label');
   window.api.getAppVersion?.().then(version => {
     if (statusLabel) statusLabel.textContent = `Installed Version v${version}`;
+    const badge = document.getElementById('settings-version-badge');
+    if (badge) badge.textContent = `v${version} — Active`;
   });
 
   if (window.api?.onUpdateStatus) {

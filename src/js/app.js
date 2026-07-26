@@ -7,6 +7,7 @@ const PAGES = {
   dashboard: () => renderDashboard(),
   invoices:  () => renderInvoices(),
   clients:   () => renderClients(),
+  stock:     () => renderStock(),
   settings:  () => renderSettings()
 };
 
@@ -176,13 +177,18 @@ async function checkPostUpdateNotificationOnLaunch() {
     if (res?.updated) {
       const msg = `🎉 Software Updated! InvoiceForge upgraded to Version ${res.currentVersion || ''}. All database records are intact.`;
       showToast(msg, 'success');
-      if (typeof showConfirm === 'function') {
-        showConfirm(
-          '🎉 Software Updated!',
-          `InvoiceForge has been successfully updated to Version ${res.currentVersion || ''}!\n\nAll your client accounts, billed transactions, and settings have been safely preserved.`,
-          () => {},
-          false
-        );
+      if (typeof showModal === 'function') {
+        showModal('🎉 Software Updated Successfully!', `
+          <div style="text-align:center;padding:10px 0">
+            <div style="font-size:42px;margin-bottom:12px">🚀</div>
+            <h2 style="font-size:20px;font-weight:700;color:var(--text);margin-bottom:10px">Welcome to InvoiceForge v${res.currentVersion || '1.0.4'}</h2>
+            <p style="font-size:14px;color:var(--text-2);line-height:1.6;margin-bottom:20px">
+              Your software has been updated to <strong>Version ${res.currentVersion || '1.0.4'}</strong>.<br/>
+              All your client accounts, billed invoices, corporate settings, and database records have been <strong>safely preserved</strong>.
+            </p>
+            <button class="btn btn-primary" style="padding:10px 24px;font-size:14px" onclick="closeModal()">Continue to Dashboard</button>
+          </div>
+        `);
       }
     }
   } catch (err) {

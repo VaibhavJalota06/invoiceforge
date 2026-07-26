@@ -184,6 +184,37 @@ if (!window.api) {
       localStorage.setItem('mock_settings', JSON.stringify(s));
       return s;
     },
+    verifyAdminPin: async () => ({ success: true }),
+    saveSecuritySettings: async (d) => {
+      const s = JSON.parse(localStorage.getItem('mock_settings') || '{}');
+      Object.assign(s, { app_lock_enabled: d.enabled ? 1 : 0, admin_name: d.adminName, admin_pin: d.pin });
+      localStorage.setItem('mock_settings', JSON.stringify(s));
+      return s;
+    },
+    getProducts: async () => JSON.parse(localStorage.getItem('mock_products') || '[]'),
+    getProduct: async (id) => {
+      const products = JSON.parse(localStorage.getItem('mock_products') || '[]');
+      return products.find(p => p.id == id) || null;
+    },
+    saveProduct: async (data) => {
+      let products = JSON.parse(localStorage.getItem('mock_products') || '[]');
+      if (data.id) {
+        products = products.map(p => p.id == data.id ? { ...p, ...data } : p);
+      } else {
+        data.id = Date.now();
+        products.push(data);
+      }
+      localStorage.setItem('mock_products', JSON.stringify(products));
+      return data;
+    },
+    deleteProduct: async (id) => {
+      let products = JSON.parse(localStorage.getItem('mock_products') || '[]');
+      products = products.filter(p => p.id != id);
+      localStorage.setItem('mock_products', JSON.stringify(products));
+      return { success: true };
+    },
+    recordStockTransaction: async () => ({ success: true }),
+    getStockTransactions: async () => [],
     getDashboardStats: async () => {
       const clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
       const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
@@ -193,6 +224,8 @@ if (!window.api) {
     exportPdf: async () => window.print(),
     printInvoice: async () => window.print(),
     checkForUpdates: async () => ({ status: 'ok' }),
+    getAppVersion: async () => '1.0.4',
+    checkUpdateNotification: async () => ({ updated: false }),
     onUpdateStatus: () => {}
   };
 }

@@ -166,7 +166,12 @@ const CURRENCIES = [
  * Get currency info by code
  */
 function getCurrency(code) {
-  return CURRENCIES.find(c => c.code === code) || { code, symbol: code, name: code };
+  const c = CURRENCIES.find(x => x.code === (code || 'INR').toUpperCase());
+  return c || { code: 'INR', symbol: '₹', name: 'Indian Rupee' };
+}
+
+function getCurrencyInfo(code) {
+  return getCurrency(code);
 }
 
 /**
@@ -175,7 +180,6 @@ function getCurrency(code) {
 function formatCurrency(amount, currencyCode) {
   const curr = getCurrency(currencyCode || 'INR');
   const num = Number(amount) || 0;
-  // Use toLocaleString for thousands separators
   const formatted = num.toLocaleString('en-IN', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2

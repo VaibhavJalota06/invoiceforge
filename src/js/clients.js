@@ -246,24 +246,25 @@ async function deleteClientById(id, name) {
 
 async function openClientProfile(clientId) {
   try {
-    const profile = await window.api.getClientProfile(clientId);
+    const profile = await window.api.getClientFullProfile(clientId);
     if (!profile || !profile.client) {
       showToast('Client profile not found', 'error');
       return;
     }
 
-    const { client, invoices, stats } = profile;
-    const currSymbol = getCurrency(getSettings()?.default_currency || 'INR').symbol;
+    const { client, invoices, stats, stockHistory } = profile;
+    const settings = (await window.api.getSettings()) || {};
+    const curr = getCurrencyInfo(settings.default_currency || 'INR');
 
     const invoicesHtml = invoices.length === 0
       ? `<div class="empty-state" style="padding:24px 0">
-           <p style="color:var(--text-3)">No invoices found for this client.</p>
+           <p style="color:var(--text-3)">No billed invoices found for this client account.</p>
            <button class="btn btn-primary btn-sm" id="profile-new-inv-btn" style="margin-top:8px">
              ${ICONS.plus} Create First Invoice
            </button>
          </div>`
-      : `<div class="table-wrap" style="max-height:280px;overflow-y:auto">
-           <table style="width:100%">
+      : `<div class="table-wrap" style="max-height:220px;overflow-y:auto">
+           <table class="data-table" style="width:100%">
              <thead>
                <tr>
                  <th>Invoice #</th>
@@ -271,7 +272,7 @@ async function openClientProfile(clientId) {
                  <th>Due Date</th>
                  <th style="text-align:right">Grand Total</th>
                  <th>Status</th>
-                 <th>Action</th>
+                 <th style="text-align:right">Action</th>
                </tr>
              </thead>
              <tbody>
@@ -280,10 +281,10 @@ async function openClientProfile(clientId) {
                    <td><strong>${_cEsc(inv.invoice_number)}</strong></td>
                    <td>${formatDate(inv.invoice_date)}</td>
                    <td>${inv.due_date ? formatDate(inv.due_date) : '—'}</td>
-                   <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${formatCurrency(inv.grand_total, inv.currency)}</strong></td>
+                   <td style="text-align:right;font-variant-numeric:tabular-nums"><strong>${curr.symbol} ${Number(inv.grand_total||0).toLocaleString('en-IN', {minimumFractionDigits:2})}</strong></td>
                    <td>${statusBadge(inv.status)}</td>
-                   <td>
-                     <button class="btn-icon btn-profile-view-inv" data-id="${inv.id}" title="Open Invoice">${ICONS.eye}</button>
+                   <td style="text-align:right">
+                     <button class="btn btn-secondary btn-sm btn-profile-view-inv" data-id="${inv.id}" title="Open Invoice Editor">${ICONS.eye || ''} View</button>
                    </td>
                  </tr>
                `).join('')}
@@ -291,55 +292,85 @@ async function openClientProfile(clientId) {
            </table>
          </div>`;
 
-    const html = `
+    const stockHtml = (!stockHistory || stockHistory.length === 0)
+      ? `<p style="font-size:12px;color:var(--text-3);padding:14px 0">No stock purchases recorded for this client account.</p>`
+      : `<div class="table-wrap" style="max-height:180px;overflow-y:auto">
+           <table class="data-table" style="width:100%">
+             <thead>
+               <tr>
+                 <th>Date</th>
+                 <th>Item Name</th>
+                 <th>Quantity Billed</th>
+                 <th>Reference Notes</th>
+               </tr>
+             </thead>
+             <tbody>
+               ${stockHistory.map(s => `
+                 <tr>
+                   <td style="font-size:12px;color:var(--text-3)">${new Date(s.created_at).toLocaleDateString('en-IN')}</td>
+                   <td style="font-weight:600">${_cEsc(s.product_name || 'Product')}</td>
+                   <td style="font-weight:700;color:var(--accent)">${s.quantity} ${_cEsc(s.unit || 'Pcs')}</td>
+                   <td style="font-size:12px;color:var(--text-2)">${_cEsc(s.notes || 'Invoice Deduction')}</td>
+                 </tr>
+               `).join('')}
+             </tbody>
+           </table>
+         </div>`;
+
+    const bodyHtml = `
       <div class="client-profile-wrap">
         <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:16px;border-bottom:1px solid var(--border)">
           <div style="display:flex;align-items:center;gap:14px">
-            <div class="client-avatar" style="width:48px;height:48px;font-size:20px;font-weight:700">${_cEsc(client.name).charAt(0).toUpperCase()}</div>
+            <div class="client-avatar" style="width:48px;height:48px;font-size:20px;font-weight:700;border-radius:12px;background:var(--accent-gradient);color:#fff;display:flex;align-items:center;justify-content:center">${_cEsc(client.name).charAt(0).toUpperCase()}</div>
             <div>
               <h2 style="font-size:18px;font-weight:700;margin:0">${_cEsc(client.name)}</h2>
               ${client.company_name ? `<div style="color:var(--text-2);font-size:13px">${_cEsc(client.company_name)}</div>` : ''}
             </div>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn btn-sm btn-primary" id="profile-create-inv-btn">${ICONS.plus} New Invoice</button>
-            <button class="btn btn-sm btn-ghost" id="profile-edit-client-btn">${ICONS.edit} Edit Client</button>
+            <button class="btn btn-sm btn-primary" id="profile-create-inv-btn">${ICONS.plus} New Billed Invoice</button>
+            <button class="btn btn-sm btn-secondary" id="profile-edit-client-btn">${ICONS.edit} Edit Details</button>
           </div>
         </div>
 
         <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:12px;margin:16px 0">
           <div class="stat-card" style="padding:12px 14px">
-            <div class="stat-label">Total Invoiced</div>
-            <div class="stat-value" style="font-size:18px">${formatCurrency(stats.totalInvoiced, 'INR')}</div>
-            <div class="stat-sub">${stats.invoiceCount} total invoice${stats.invoiceCount !== 1 ? 's' : ''}</div>
+            <div class="stat-label">Total Billed Revenue</div>
+            <div class="stat-value" style="font-size:18px">${curr.symbol} ${(stats.totalBilled||0).toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
+            <div class="stat-sub">${stats.invoiceCount} total transaction${stats.invoiceCount !== 1 ? 's' : ''}</div>
           </div>
           <div class="stat-card warning" style="padding:12px 14px">
-            <div class="stat-label">Outstanding</div>
-            <div class="stat-value" style="font-size:18px">${formatCurrency(stats.outstanding, 'INR')}</div>
+            <div class="stat-label">Accounts Receivable (A/R)</div>
+            <div class="stat-value" style="font-size:18px">${curr.symbol} ${(stats.outstanding||0).toLocaleString('en-IN', {minimumFractionDigits:2})}</div>
             <div class="stat-sub">Unpaid / Overdue</div>
           </div>
           <div class="stat-card success" style="padding:12px 14px">
-            <div class="stat-label">Paid Invoices</div>
+            <div class="stat-label">Settled Invoices</div>
             <div class="stat-value" style="font-size:18px">${stats.paidCount}</div>
-            <div class="stat-sub">Completed transactions</div>
+            <div class="stat-sub">Completed payments</div>
           </div>
         </div>
 
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--bg-3);padding:12px;border-radius:8px;margin-bottom:16px;font-size:13px">
-          <div><strong>Email:</strong> ${_cEsc(client.email) || '—'}</div>
-          <div><strong>Phone:</strong> ${_cEsc(client.phone) || '—'}</div>
-          <div><strong>GSTIN:</strong> ${_cEsc(client.gstin) || '—'}</div>
-          <div><strong>Address:</strong> ${_cEsc(client.billing_address) || '—'}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;background:var(--bg-3);padding:14px;border-radius:8px;margin-bottom:16px;font-size:13px;border:1px solid var(--border)">
+          <div><strong>Corporate Email:</strong> ${_cEsc(client.email) || '—'}</div>
+          <div><strong>Telephone:</strong> ${_cEsc(client.phone) || '—'}</div>
+          <div><strong>GSTIN / Tax ID:</strong> ${_cEsc(client.gstin) || '—'}</div>
+          <div><strong>Billing Address:</strong> ${_cEsc(client.billing_address) || '—'}</div>
+        </div>
+
+        <div style="margin-bottom:18px">
+          <h4 style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--text)">Billed Transactions &amp; Invoices</h4>
+          ${invoicesHtml}
         </div>
 
         <div>
-          <h4 style="font-size:14px;font-weight:600;margin-bottom:10px">Invoices & Order History</h4>
-          ${invoicesHtml}
+          <h4 style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--text)">Product &amp; Stock Purchase History</h4>
+          ${stockHtml}
         </div>
       </div>
     `;
 
-    openModal(`Client Profile — ${_cEsc(client.name)}`, html, null, true);
+    showModal(`Client 360° Profile — ${_cEsc(client.name)}`, bodyHtml, 'modal-lg');
 
     const closeAndCreateInv = () => {
       closeModal();

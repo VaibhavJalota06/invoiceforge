@@ -12,12 +12,14 @@ async function openInvoiceEditor(invoiceId, options = {}) {
   const content = document.getElementById('page-content');
   content.innerHTML = `<div class="loading-state"><div class="spinner"></div></div>`;
 
-  const [settings, clients] = await Promise.all([
+  const [settings, clients, products] = await Promise.all([
     window.api.getSettings(),
-    window.api.getClients()
+    window.api.getClients(),
+    window.api.getProducts()
   ]);
 
-  _editorClients = clients;
+  _editorClients = clients || [];
+  window._editorProducts = products || [];
   _editorInvoice = null;
 
   let invoice = null;
@@ -260,12 +262,21 @@ function _updateClientPreview(clientId) {
 function _renderLineItems() {
   const tbody = document.getElementById('line-items-body');
   if (!tbody) return;
+  const products = window._editorProducts || [];
   tbody.innerHTML = _editorItems.map((item, idx) => `
     <tr>
       <td class="col-desc">
-        <input class="form-input" type="text" placeholder="Description of product or service"
-          value="${_iEsc(item.description)}"
-          oninput="_editorItems[${idx}].description=this.value">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          ${products.length > 0 ? `
+            <select class="form-select" style="font-size:11.5px;padding:3px 8px;margin-bottom:2px" onchange="_onSelectInventoryProduct(${idx}, this.value)">
+              <option value="0">-- Select from Inventory / Stock --</option>
+              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${_iEsc(p.name)} (${p.current_stock} ${_iEsc(p.unit||'Pcs')} in stock)</option>`).join('')}
+            </select>
+          ` : ''}
+          <input class="form-input" type="text" placeholder="Description of product or service"
+            value="${_iEsc(item.description)}"
+            oninput="_editorItems[${idx}].description=this.value">
+        </div>
       </td>
       <td class="col-qty">
         <input class="form-input" type="number" min="0" step="0.01" value="${item.quantity}"
@@ -282,6 +293,16 @@ function _renderLineItems() {
     </tr>
   `).join('');
   _recalcTotals();
+}
+
+function _onSelectInventoryProduct(idx, productId) {
+  const p = (window._editorProducts || []).find(x => x.id == productId);
+  if (p) {
+    _editorItems[idx].product_id = p.id;
+    _editorItems[idx].description = p.name;
+    _editorItems[idx].rate = p.selling_rate || 0;
+    _renderLineItems();
+  }
 }
 
 function _removeLineItem(idx) {
@@ -329,7 +350,7 @@ function _recalcTotals() {
 
   const discVal  = parseFloat(document.getElementById('inv-discount')?.value) || 0;
   const discType = window._currentDiscType || 'percentage';
-  const discAmt  = discType==='percentage' ? round2(subtotal*discVal/100) : round2(discVal);
+  const discAmt  = Math.min(subtotal, discType==='percentage' ? round2(subtotal*discVal/100) : round2(discVal));
   const afterDisc = round2(subtotal - discAmt);
 
   let taxTotal = 0;
@@ -375,14 +396,15 @@ async function _saveInvoice(status, nextCounter) {
   let subtotal = 0;
   _editorItems.forEach(item => { item.amount=round2(item.quantity*item.rate); subtotal+=item.amount; });
 
-  const discAmt  = discType==='percentage' ? round2(subtotal*discVal/100) : round2(discVal);
+  const discAmt  = Math.min(subtotal, discType==='percentage' ? round2(subtotal*discVal/100) : round2(discVal));
   const afterDisc = round2(subtotal - discAmt);
   let taxAmt = 0;
   _editorTaxLines.forEach(t => { t.amount=round2(afterDisc*t.rate/100); taxAmt+=t.amount; });
 
   const grandTotal = round2(afterDisc + taxAmt);
 
-  const saved = await window.api.saveInvoice({
+  try {
+    const saved = await window.api.saveInvoice({
     id:             _editorInvoice?.id || null,
     invoice_number: invoiceNumber,
     client_id:      clientId ? parseInt(clientId) : null,
@@ -399,11 +421,14 @@ async function _saveInvoice(status, nextCounter) {
     notes,
     status,
     items: _editorItems
-  });
+    });
 
-  showToast(status==='draft' ? 'Draft saved!' : 'Invoice saved!', 'success');
-  _editorInvoice = saved;
-  openInvoiceEditor(saved.id);
+    showToast(status==='draft' ? 'Draft saved!' : 'Invoice saved!', 'success');
+    _editorInvoice = saved;
+    openInvoiceEditor(saved.id);
+  } catch (err) {
+    showToast(`Failed to save invoice: ${err.message}`, 'error');
+  }
 }
 
 async function _exportPdf() {

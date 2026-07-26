@@ -11,8 +11,17 @@ contextBridge.exposeInMainWorld('api', {
   getClients: () => ipcRenderer.invoke('get-clients'),
   getClient: (id) => ipcRenderer.invoke('get-client', id),
   getClientProfile: (id) => ipcRenderer.invoke('get-client-profile', id),
+  getClientFullProfile: (id) => ipcRenderer.invoke('get-client-full-profile', id),
   saveClient: (client) => ipcRenderer.invoke('save-client', client),
   deleteClient: (id) => ipcRenderer.invoke('delete-client', id),
+
+  // Products & Stock Management
+  getProducts: () => ipcRenderer.invoke('get-products'),
+  getProduct: (id) => ipcRenderer.invoke('get-product', id),
+  saveProduct: (product) => ipcRenderer.invoke('save-product', product),
+  deleteProduct: (id) => ipcRenderer.invoke('delete-product', id),
+  recordStockTransaction: (tx) => ipcRenderer.invoke('record-stock-transaction', tx),
+  getStockTransactions: (productId) => ipcRenderer.invoke('get-stock-transactions', productId),
 
   // Invoices
   getInvoices: (filters) => ipcRenderer.invoke('get-invoices', filters),
@@ -38,5 +47,6 @@ contextBridge.exposeInMainWorld('api', {
   quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   checkUpdateNotification: () => ipcRenderer.invoke('check-update-notification'),
-  onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, data) => callback(data))
+  onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, data) => callback(data)),
+  logError: (msg) => ipcRenderer.invoke('renderer-log-error', msg)
 });

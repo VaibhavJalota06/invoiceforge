@@ -1,11 +1,10 @@
 {
   "name": "invoiceforge",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Fully offline desktop invoice application for Windows",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "prebuild": "cmd /c \"taskkill /F /FI \\\"IMAGENAME eq InvoiceForge*\\\" 2>nul || exit 0\"",
     "build": "electron-builder --win",
     "build:portable": "electron-builder --win portable"
   },

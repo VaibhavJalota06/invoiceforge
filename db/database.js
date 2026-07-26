@@ -26,8 +26,9 @@ function initDatabase() {
 }
 
 function createSchema() {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
+  // Create each table individually so a pre-existing table never blocks others
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS settings (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       company_name TEXT DEFAULT '',
       company_address TEXT DEFAULT '',
@@ -46,11 +47,9 @@ function createSchema() {
       admin_name TEXT DEFAULT 'Admin',
       admin_pin TEXT DEFAULT '',
       machine_guid TEXT DEFAULT ''
-    );
-
-    INSERT OR IGNORE INTO settings (id) VALUES (1);
-
-    CREATE TABLE IF NOT EXISTS clients (
+    )`,
+    `INSERT OR IGNORE INTO settings (id) VALUES (1)`,
+    `CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       company_name TEXT DEFAULT '',
@@ -59,9 +58,8 @@ function createSchema() {
       phone TEXT DEFAULT '',
       gstin TEXT DEFAULT '',
       created_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS invoices (
+    )`,
+    `CREATE TABLE IF NOT EXISTS invoices (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_number TEXT NOT NULL UNIQUE,
       client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
@@ -80,35 +78,79 @@ function createSchema() {
       status TEXT DEFAULT 'draft',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS invoice_items (
+    )`,
+    `CREATE TABLE IF NOT EXISTS invoice_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       invoice_id INTEGER NOT NULL REFERENCES invoices(id) ON DELETE CASCADE,
+      product_id INTEGER DEFAULT 0,
       description TEXT DEFAULT '',
       quantity REAL DEFAULT 1,
       rate REAL DEFAULT 0,
       amount REAL DEFAULT 0,
       sort_order INTEGER DEFAULT 0
-    );
-  `);
+    )`,
+    `CREATE TABLE IF NOT EXISTS products (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      sku TEXT DEFAULT '',
+      unit TEXT DEFAULT 'Pcs',
+      cost_price REAL DEFAULT 0,
+      selling_rate REAL DEFAULT 0,
+      current_stock REAL DEFAULT 0,
+      reorder_level REAL DEFAULT 5,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS stock_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      quantity REAL NOT NULL,
+      reference_type TEXT DEFAULT 'MANUAL',
+      reference_id INTEGER DEFAULT 0,
+      client_id INTEGER DEFAULT 0,
+      notes TEXT DEFAULT '',
+      reversed INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    )`
+  ];
 
-  // Idempotent column migrations for settings & invoices
-  try { db.exec(`ALTER TABLE settings ADD COLUMN app_lock_enabled INTEGER DEFAULT 0`); } catch(e){}
-  try { db.exec(`ALTER TABLE settings ADD COLUMN admin_name TEXT DEFAULT 'Admin'`); } catch(e){}
-  try { db.exec(`ALTER TABLE settings ADD COLUMN admin_pin TEXT DEFAULT ''`); } catch(e){}
-  try { db.exec(`ALTER TABLE settings ADD COLUMN machine_guid TEXT DEFAULT ''`); } catch(e){}
-  try { db.exec(`ALTER TABLE settings ADD COLUMN last_installed_version TEXT DEFAULT ''`); } catch(e){}
+  for (const sql of tables) {
+    try {
+      db.exec(sql);
+    } catch (e) {
+      console.error('Schema create error:', e.message, '\nSQL:', sql.slice(0, 80));
+    }
+  }
+
+  // Idempotent column migrations
+  const migrations = [
+    `ALTER TABLE settings ADD COLUMN app_lock_enabled INTEGER DEFAULT 0`,
+    `ALTER TABLE settings ADD COLUMN admin_name TEXT DEFAULT 'Admin'`,
+    `ALTER TABLE settings ADD COLUMN admin_pin TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN machine_guid TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN last_installed_version TEXT DEFAULT ''`,
+    `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
+    `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`
+  ];
+  for (const m of migrations) {
+    try { db.exec(m); } catch (e) {} // expected to fail if column already exists
+  }
 
   const invCols = db.prepare('PRAGMA table_info(invoices)').all();
-  if (!invCols.some(c => c.name === 'client_snapshot')) db.exec("ALTER TABLE invoices ADD COLUMN client_snapshot TEXT DEFAULT '{}'");
+  if (!invCols.some(c => c.name === 'client_snapshot')) {
+    try { db.exec("ALTER TABLE invoices ADD COLUMN client_snapshot TEXT DEFAULT '{}'"); } catch(e){}
+  }
 
   // Generate machine_guid if missing
-  const currentSettings = db.prepare('SELECT machine_guid FROM settings WHERE id = 1').get();
-  if (!currentSettings || !currentSettings.machine_guid) {
-    const crypto = require('crypto');
-    const newGuid = 'MAC-' + crypto.randomBytes(8).toString('hex').toUpperCase();
-    db.prepare('UPDATE settings SET machine_guid = ? WHERE id = 1').run(newGuid);
+  try {
+    const currentSettings = db.prepare('SELECT machine_guid FROM settings WHERE id = 1').get();
+    if (!currentSettings || !currentSettings.machine_guid) {
+      const crypto = require('crypto');
+      const newGuid = 'MAC-' + crypto.randomBytes(8).toString('hex').toUpperCase();
+      db.prepare('UPDATE settings SET machine_guid = ? WHERE id = 1').run(newGuid);
+    }
+  } catch (e) {
+    console.error('machine_guid init error:', e.message);
   }
 }
 
@@ -176,6 +218,7 @@ function saveClient(data) {
     phone: String(data.phone || '').trim(),
     gstin: String(data.gstin || '').trim()
   };
+  if (!row.name) throw new Error('Client name is required');
   let savedClient;
   if (data.id) {
     const id = Number(data.id);
@@ -304,10 +347,10 @@ function saveInvoice(data) {
   const saveItems = db.transaction((invoiceId, rows) => {
     db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(invoiceId);
     const stmt = db.prepare(`
-      INSERT INTO invoice_items (invoice_id, description, quantity, rate, amount, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
-    rows.forEach((item, i) => stmt.run(invoiceId, item.description || '', item.quantity || 1, item.rate || 0, item.amount || 0, i));
+    rows.forEach((item, i) => stmt.run(invoiceId, Number(item.product_id) || 0, item.description || '', item.quantity || 1, item.rate || 0, item.amount || 0, i));
   });
 
   let savedId;
@@ -343,7 +386,15 @@ function saveInvoice(data) {
 
 // Returns the full invoice object (not just id) — required by invoice-editor.js
 function saveInvoiceAndReturn(data) {
-  const id = saveInvoice(data);
+  const saveWithStock = db.transaction(() => {
+    const previous = data.id ? getInvoice(data.id) : null;
+    if (previous && previous.status !== 'draft') restoreStockForInvoice(previous.id);
+    const id = saveInvoice(data);
+    const saved = getInvoice(id);
+    if (saved && saved.status !== 'draft') deductStockForInvoice(id, data.items || [], data.client_id);
+    return id;
+  });
+  const id = saveWithStock();
   return getInvoice(id);
 }
 
@@ -472,17 +523,179 @@ function checkPostUpdateNotification(currentVersion) {
   if (!db) return { updated: false };
   try {
     const row = db.prepare(`SELECT last_installed_version FROM settings WHERE id = 1`).get();
-    const lastVer = row ? (row.last_installed_version || '') : '';
-    if (lastVer && lastVer !== currentVersion) {
+    let lastVer = row ? (row.last_installed_version || '') : '';
+    if (!lastVer) {
+      lastVer = '1.0.3';
+    }
+    if (lastVer !== currentVersion) {
       db.prepare(`UPDATE settings SET last_installed_version = ? WHERE id = 1`).run(currentVersion);
       return { updated: true, previousVersion: lastVer, currentVersion: currentVersion };
-    } else if (!lastVer) {
-      db.prepare(`UPDATE settings SET last_installed_version = ? WHERE id = 1`).run(currentVersion);
     }
   } catch (err) {
     console.error('Update notification check error:', err.message);
   }
   return { updated: false, currentVersion: currentVersion };
+}
+
+// ─── Products & Stock Operations ───────────────────────────────────────────────
+function getAllProducts() {
+  return db.prepare(`SELECT * FROM products ORDER BY name ASC`).all();
+}
+
+function getProduct(id) {
+  return db.prepare(`SELECT * FROM products WHERE id = ?`).get(id);
+}
+
+function saveProduct(product) {
+  const { id, name, sku, unit, cost_price, selling_rate, current_stock, reorder_level } = product;
+  const cleanName = String(name || '').trim();
+  if (!cleanName) throw new Error('Product name is required');
+  if (id) {
+    db.prepare(`
+      UPDATE products
+      SET name = ?, sku = ?, unit = ?, cost_price = ?, selling_rate = ?, current_stock = ?, reorder_level = ?
+      WHERE id = ?
+    `).run(cleanName, sku || '', unit || 'Pcs', Number(cost_price)||0, Number(selling_rate)||0, Number(current_stock)||0, Number(reorder_level)||5, id);
+    return getProduct(id);
+  } else {
+    const res = db.prepare(`
+      INSERT INTO products (name, sku, unit, cost_price, selling_rate, current_stock, reorder_level)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(cleanName, sku || '', unit || 'Pcs', Number(cost_price)||0, Number(selling_rate)||0, Number(current_stock)||0, Number(reorder_level)||5);
+    return getProduct(res.lastInsertRowid);
+  }
+}
+
+function deleteProduct(id) {
+  db.prepare(`DELETE FROM stock_transactions WHERE product_id = ?`).run(id);
+  return db.prepare(`DELETE FROM products WHERE id = ?`).run(id);
+}
+
+function recordStockTransaction({ product_id, type, quantity, reference_type, reference_id, client_id, notes }) {
+  const qty = Math.abs(Number(quantity)) || 0;
+  if (!product_id || qty <= 0) return false;
+
+  const t = type === 'OUT' ? 'OUT' : 'IN';
+  const product = getProduct(product_id);
+  if (!product) throw new Error('Inventory item was not found');
+  if (t === 'OUT' && Number(product.current_stock) < qty) {
+    throw new Error(`Insufficient stock for ${product.name}`);
+  }
+  db.prepare(`
+    INSERT INTO stock_transactions (product_id, type, quantity, reference_type, reference_id, client_id, notes)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(product_id, t, qty, reference_type || 'MANUAL', reference_id || 0, client_id || 0, notes || '');
+
+  if (t === 'IN') {
+    db.prepare(`UPDATE products SET current_stock = current_stock + ? WHERE id = ?`).run(qty, product_id);
+  } else {
+    db.prepare(`UPDATE products SET current_stock = current_stock - ? WHERE id = ?`).run(qty, product_id);
+  }
+  return true;
+}
+
+function getStockTransactions(productId) {
+  if (productId) {
+    return db.prepare(`
+      SELECT st.*, p.name as product_name, c.name as client_name
+      FROM stock_transactions st
+      LEFT JOIN products p ON st.product_id = p.id
+      LEFT JOIN clients c ON st.client_id = c.id
+      WHERE st.product_id = ?
+      ORDER BY st.id DESC
+    `).all(productId);
+  }
+  return db.prepare(`
+    SELECT st.*, p.name as product_name, c.name as client_name
+    FROM stock_transactions st
+    LEFT JOIN products p ON st.product_id = p.id
+    LEFT JOIN clients c ON st.client_id = c.id
+    ORDER BY st.id DESC LIMIT 100
+  `).all();
+}
+
+function deductStockForInvoice(invoiceId, items, clientId) {
+  if (!items || !items.length) return;
+  items.forEach(item => {
+    let p = null;
+    if (item.product_id) {
+      p = getProduct(item.product_id);
+    }
+    if (!p && item.description) {
+      p = db.prepare(`SELECT * FROM products WHERE LOWER(name) = LOWER(?)`).get(item.description.trim());
+    }
+    if (p) {
+      recordStockTransaction({
+        product_id: p.id,
+        type: 'OUT',
+        quantity: Math.abs(Number(item.quantity)) || 1,
+        reference_type: 'INVOICE',
+        reference_id: invoiceId,
+        client_id: clientId || 0,
+        notes: `Auto stock deduction for Invoice #${invoiceId}`
+      });
+    }
+  });
+}
+
+function restoreStockForInvoice(invoiceId) {
+  const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'INVOICE' AND reference_id = ? AND type = 'OUT' AND reversed = 0`).all(invoiceId);
+  txs.forEach(tx => {
+    recordStockTransaction({
+      product_id: tx.product_id,
+      type: 'IN',
+      quantity: tx.quantity,
+      reference_type: 'INVOICE_RESTORE',
+      reference_id: invoiceId,
+      client_id: tx.client_id,
+      notes: `Restored stock from deleted Invoice #${invoiceId}`
+    });
+    db.prepare('UPDATE stock_transactions SET reversed = 1 WHERE id = ?').run(tx.id);
+  });
+}
+
+function getClientFullProfile(clientId) {
+  const client = getClient(clientId);
+  if (!client) return null;
+
+  const invoices = db.prepare(`
+    SELECT id, invoice_number, invoice_date, due_date, currency, grand_total, status, notes
+    FROM invoices
+    WHERE client_id = ?
+    ORDER BY id DESC
+  `).all(clientId);
+
+  let totalBilled = 0;
+  let outstanding = 0;
+  let paidCount = 0;
+
+  invoices.forEach(inv => {
+    totalBilled += Number(inv.grand_total) || 0;
+    if (inv.status === 'paid') paidCount++;
+    else if (inv.status === 'unpaid' || inv.status === 'overdue') {
+      outstanding += Number(inv.grand_total) || 0;
+    }
+  });
+
+  const stockHistory = db.prepare(`
+    SELECT st.*, p.name as product_name, p.unit
+    FROM stock_transactions st
+    LEFT JOIN products p ON st.product_id = p.id
+    WHERE st.client_id = ?
+    ORDER BY st.id DESC
+  `).all(clientId);
+
+  return {
+    client,
+    invoices,
+    stats: {
+      totalBilled,
+      outstanding,
+      invoiceCount: invoices.length,
+      paidCount
+    },
+    stockHistory
+  };
 }
 
 function closeDatabase() {
@@ -500,9 +713,10 @@ function closeDatabase() {
 module.exports = {
   initDatabase, getDbPath, closeDatabase,
   getSettings, saveSettings, verifyAdminPin, saveSecuritySettings, checkPostUpdateNotification,
-  getAllClients, getClient, saveClient, deleteClient, getClientProfile,
+  getAllClients, getClient, saveClient, deleteClient, getClientProfile, getClientFullProfile,
   getAllInvoices, getInvoice, getNextInvoiceNumber, getNextInvoiceNumberObj,
   saveInvoice, saveInvoiceAndReturn, deleteInvoice, duplicateInvoice,
-  updateInvoiceStatus, getDashboardStats
+  updateInvoiceStatus, getDashboardStats,
+  getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
+  deductStockForInvoice, restoreStockForInvoice
 };
-

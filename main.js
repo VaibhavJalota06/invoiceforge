@@ -58,8 +58,8 @@ function hasUpdateConfig() {
 }
 
 function setupAutoUpdater() {
-  autoUpdater.autoDownload = true;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
 
   if (!app.isPackaged && fs.existsSync(path.join(__dirname, 'dev-app-update.yml'))) {
     autoUpdater.forceDevUpdateConfig = true;
@@ -99,7 +99,9 @@ function setupAutoUpdater() {
 function configureCustomDataPath() {
   try {
     let baseDir;
-    if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    if (process.env.INVOICEFORGE_DATA_DIR) {
+      baseDir = path.resolve(process.env.INVOICEFORGE_DATA_DIR);
+    } else if (process.env.PORTABLE_EXECUTABLE_DIR) {
       baseDir = process.env.PORTABLE_EXECUTABLE_DIR;
     } else if (app.isPackaged) {
       // Standard installed app uses system AppData directory for robust multi-user permissions
@@ -179,9 +181,21 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// ─── Debug Logger ───────────────────────────────────────────────────────────
+ipcMain.handle('renderer-log-error', (_e, msg) => {
+  const logPath = path.join(app.getPath('userData'), 'renderer-errors.log');
+  const line = `[${new Date().toISOString()}] ${msg}\n`;
+  fs.appendFileSync(logPath, line);
+  console.error('[RENDERER ERROR]', msg);
+});
+
 // ─── Settings & Security ────────────────────────────────────────────────────────
-ipcMain.handle('get-settings', () => db.getSettings());
-ipcMain.handle('save-settings', (_e, data) => db.saveSettings(data));
+ipcMain.handle('get-settings', () => {
+  try { return db.getSettings(); } catch (e) { console.error('get-settings error:', e); throw e; }
+});
+ipcMain.handle('save-settings', (_e, data) => {
+  try { return db.saveSettings(data); } catch (e) { console.error('save-settings error:', e); throw e; }
+});
 ipcMain.handle('verify-admin-pin', (_e, pin) => db.verifyAdminPin(pin));
 ipcMain.handle('save-security-settings', (_e, data) => db.saveSecuritySettings(data));
 
@@ -189,18 +203,33 @@ ipcMain.handle('save-security-settings', (_e, data) => db.saveSecuritySettings(d
 ipcMain.handle('get-clients', () => db.getAllClients());
 ipcMain.handle('get-client', (_e, id) => db.getClient(id));
 ipcMain.handle('get-client-profile', (_e, id) => db.getClientProfile(id));
+ipcMain.handle('get-client-full-profile', (_e, id) => db.getClientFullProfile(id));
 ipcMain.handle('save-client', (_e, data) => db.saveClient(data));
 ipcMain.handle('delete-client', (_e, id) => db.deleteClient(id));
+
+// ─── Products & Stock Management ───────────────────────────────────────────────
+ipcMain.handle('get-products', () => {
+  try { return db.getAllProducts(); } catch (e) { console.error('get-products error:', e); throw e; }
+});
+ipcMain.handle('get-product', (_e, id) => db.getProduct(id));
+ipcMain.handle('save-product', (_e, data) => db.saveProduct(data));
+ipcMain.handle('delete-product', (_e, id) => db.deleteProduct(id));
+ipcMain.handle('record-stock-transaction', (_e, tx) => db.recordStockTransaction(tx));
+ipcMain.handle('get-stock-transactions', (_e, productId) => db.getStockTransactions(productId));
 
 // ─── Invoices ──────────────────────────────────────────────────────────────────
 ipcMain.handle('get-invoices', (_e, filters) => db.getAllInvoices(filters));
 ipcMain.handle('get-invoice', (_e, id) => db.getInvoice(id));
-// save-invoice is now handled above (saveInvoiceAndReturn)
-ipcMain.handle('delete-invoice', (_e, id) => db.deleteInvoice(id));
+ipcMain.handle('delete-invoice', (_e, id) => {
+  db.restoreStockForInvoice(id);
+  return db.deleteInvoice(id);
+});
 ipcMain.handle('duplicate-invoice', (_e, id) => db.duplicateInvoice(id));
 ipcMain.handle('update-invoice-status', (_e, id, status) => db.updateInvoiceStatus(id, status));
 ipcMain.handle('get-next-invoice-number', () => db.getNextInvoiceNumberObj());
-ipcMain.handle('save-invoice', (_e, data) => db.saveInvoiceAndReturn(data));
+ipcMain.handle('save-invoice', (_e, data) => {
+  return db.saveInvoiceAndReturn(data);
+});
 ipcMain.handle('get-dashboard-stats', () => db.getDashboardStats());
 
 // ─── PDF Export ────────────────────────────────────────────────────────────────
@@ -274,6 +303,9 @@ ipcMain.handle('print-invoice', async (_e, htmlContent) => {
 ipcMain.handle('check-for-updates', async () => {
   if (!app.isPackaged && fs.existsSync(path.join(__dirname, 'dev-app-update.yml'))) {
     autoUpdater.forceDevUpdateConfig = true;
+  }
+  if (!hasUpdateConfig()) {
+    return { status: 'offline', message: 'Updates are not configured for this installation.' };
   }
   try {
     autoUpdater.checkForUpdates().catch(e => {
