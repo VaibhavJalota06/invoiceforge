@@ -58,24 +58,32 @@ function hasUpdateConfig() {
 }
 
 function setupAutoUpdater() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  if (!app.isPackaged && fs.existsSync(path.join(__dirname, 'dev-app-update.yml'))) {
+    autoUpdater.forceDevUpdateConfig = true;
+  }
+
   autoUpdater.on('checking-for-update', () => {
-    mainWindow?.webContents.send('update-status', { status: 'checking', message: 'Checking for updates…' });
+    mainWindow?.webContents.send('update-status', { status: 'checking', message: 'Checking GitHub for updates…' });
   });
   autoUpdater.on('update-available', (info) => {
-    mainWindow?.webContents.send('update-status', { status: 'available', version: info.version, message: `Update v${info.version} is available.` });
+    mainWindow?.webContents.send('update-status', { status: 'available', version: info.version, message: `Update v${info.version} is available!` });
   });
   autoUpdater.on('update-not-available', () => {
     mainWindow?.webContents.send('update-status', { status: 'not-available', message: 'InvoiceForge is up to date.' });
   });
   autoUpdater.on('download-progress', (progress) => {
-    mainWindow?.webContents.send('update-status', { status: 'downloading', percent: Math.round(progress.percent) });
+    mainWindow?.webContents.send('update-status', { status: 'downloading', percent: Math.round(progress.percent), message: `Downloading update… ${Math.round(progress.percent)}%` });
   });
   autoUpdater.on('update-downloaded', (info) => {
-    mainWindow?.webContents.send('update-status', { status: 'downloaded', version: info.version, message: `Update v${info.version} ready! Restart to apply.` });
+    mainWindow?.webContents.send('update-status', { status: 'downloaded', version: info.version, message: `Update v${info.version} ready! Click to restart.` });
   });
   autoUpdater.on('error', (err) => {
     console.log('Auto-updater notice:', err.message);
     if (err.code === 'ENOENT' || (err.message && err.message.includes('app-update.yml'))) {
+      mainWindow?.webContents.send('update-status', { status: 'offline', message: 'InvoiceForge is running in offline standalone mode.' });
       return;
     }
     mainWindow?.webContents.send('update-status', { status: 'error', message: `Update check failed: ${err.message}` });
@@ -264,21 +272,17 @@ ipcMain.handle('print-invoice', async (_e, htmlContent) => {
 
 // ─── Auto-Updater IPC ─────────────────────────────────────────────────────────
 ipcMain.handle('check-for-updates', async () => {
-  if (!hasUpdateConfig()) {
-    return { status: 'offline', message: 'InvoiceForge is running in offline standalone mode.' };
+  if (!app.isPackaged && fs.existsSync(path.join(__dirname, 'dev-app-update.yml'))) {
+    autoUpdater.forceDevUpdateConfig = true;
   }
-  if (app.isPackaged) {
-    try {
-      const res = await autoUpdater.checkForUpdates();
-      return { status: 'ok', updateInfo: res?.updateInfo, message: 'InvoiceForge is up to date.' };
-    } catch (e) {
-      if (e.code === 'ENOENT' || (e.message && e.message.includes('app-update.yml'))) {
-        return { status: 'offline', message: 'InvoiceForge is running in offline standalone mode.' };
-      }
-      return { status: 'error', message: `Could not check for updates: ${e.message}` };
-    }
-  } else {
-    return { status: 'dev-mode', message: 'Auto-update checks run in production builds.' };
+  try {
+    autoUpdater.checkForUpdates().catch(e => {
+      console.log('Update check error:', e.message);
+      mainWindow?.webContents.send('update-status', { status: 'error', message: `Could not check for updates: ${e.message}` });
+    });
+    return { status: 'checking', message: 'Checking GitHub for updates…' };
+  } catch (e) {
+    return { status: 'error', message: `Could not check for updates: ${e.message}` };
   }
 });
 

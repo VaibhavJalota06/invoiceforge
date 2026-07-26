@@ -307,24 +307,26 @@ async function renderSettings() {
   const checkBtn = document.getElementById('btn-check-updates');
   const statusLabel = document.getElementById('update-status-label');
   window.api.getAppVersion?.().then(version => {
-    if (statusLabel) statusLabel.textContent = `Version ${version} (Offline Standalone Mode)`;
+    if (statusLabel) statusLabel.textContent = `Installed Version v${version}`;
   });
+
+  if (window.api?.onUpdateStatus) {
+    window.api.onUpdateStatus((data) => {
+      if (statusLabel && data?.message) {
+        statusLabel.textContent = data.message;
+      }
+      if (checkBtn) checkBtn.disabled = false;
+    });
+  }
+
   if (checkBtn) {
     checkBtn.addEventListener('click', async () => {
       checkBtn.disabled = true;
-      if (statusLabel) statusLabel.textContent = 'Checking…';
-      const res = await window.api.checkForUpdates();
-      checkBtn.disabled = false;
-      if (res?.message) {
-        if (res.status === 'offline' || res.status === 'dev-mode') {
-          const msg = 'InvoiceForge is running in offline standalone mode. All features operate locally without internet.';
-          if (statusLabel) statusLabel.textContent = msg;
-          showToast(msg, 'info');
-        } else {
-          if (statusLabel) statusLabel.textContent = res.message;
-          showToast(res.message, res.status === 'error' ? 'error' : 'info');
-        }
-      } else {
+      if (statusLabel) statusLabel.textContent = 'Checking GitHub for updates…';
+      try {
+        await window.api.checkForUpdates();
+      } catch (err) {
+        checkBtn.disabled = false;
         if (statusLabel) statusLabel.textContent = 'Check complete';
       }
     });
