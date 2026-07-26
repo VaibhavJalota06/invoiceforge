@@ -17,39 +17,39 @@ async function renderDashboard() {
   content.innerHTML = `
     <div class="page-header">
       <div>
-        <h1 class="page-title">Dashboard</h1>
-        <p class="page-subtitle">Welcome back — here's your business at a glance</p>
+        <h1 class="page-title">Executive Dashboard</h1>
+        <p class="page-subtitle">Real-time enterprise overview &amp; financial metrics</p>
       </div>
       <button class="btn btn-primary" onclick="navigate('invoices'); setTimeout(()=>openInvoiceEditor(null),50)">
-        ${ICONS.plus} New Invoice
+        ${ICONS.plus} New Billed Invoice
       </button>
     </div>
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-label">Invoiced This Month</div>
+        <div class="stat-label">Monthly Gross Billed Revenue</div>
         <div class="stat-value">${curr.symbol} ${Number(stats.totalThisMonth || 0).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-        <div class="stat-sub">${defaultCurrency} · current month</div>
+        <div class="stat-sub">${defaultCurrency} · Current Billing Cycle</div>
       </div>
       <div class="stat-card warning">
-        <div class="stat-label">Outstanding</div>
+        <div class="stat-label">Accounts Receivable (A/R)</div>
         <div class="stat-value">${curr.symbol} ${Number(stats.outstanding || 0).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-        <div class="stat-sub">Unpaid + Overdue invoices</div>
+        <div class="stat-sub">Pending Unpaid + Overdue Invoices</div>
       </div>
       <div class="stat-card success">
-        <div class="stat-label">Total Clients</div>
+        <div class="stat-label">Active Client Accounts</div>
         <div class="stat-value">${stats.clientCount || 0}</div>
-        <div class="stat-sub">Active client records</div>
+        <div class="stat-sub">Registered Corporate Profiles</div>
       </div>
       <div class="stat-card info">
-        <div class="stat-label">Total Invoices</div>
+        <div class="stat-label">Billed Transactions</div>
         <div class="stat-value">${stats.invoiceCount || 0}</div>
-        <div class="stat-sub">${statusMap.paid||0} paid · ${statusMap.unpaid||0} unpaid · ${statusMap.overdue||0} overdue</div>
+        <div class="stat-sub">${statusMap.paid||0} settled · ${statusMap.unpaid||0} pending · ${statusMap.overdue||0} overdue</div>
       </div>
     </div>
 
     <div class="card">
-      <div class="card-title">Recent Invoices</div>
+      <div class="card-title">Recent Transactions &amp; Invoices</div>
       ${_renderRecentList(stats.recent || [])}
     </div>
   `;

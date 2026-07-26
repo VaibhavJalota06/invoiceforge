@@ -140,14 +140,14 @@ async function openInvoiceEditor(invoiceId, options = {}) {
         <div class="form-row" style="align-items:flex-start;gap:28px">
           <div style="flex:1">
             <div class="form-group">
-              <label class="form-label">Notes / Terms &amp; Conditions</label>
-              <textarea class="form-textarea" id="inv-notes" rows="6" placeholder="Payment terms, bank details, or additional notes…">${_iEsc(invoice?.notes || settings.invoice_footer || settings.bank_details || '')}</textarea>
+              <label class="form-label">Commercial Terms &amp; Settlement Instructions</label>
+              <textarea class="form-textarea" id="inv-notes" rows="6" placeholder="Settlement due terms, bank wire instructions, or special commercial notes…">${_iEsc(invoice?.notes || settings.invoice_footer || settings.bank_details || '')}</textarea>
             </div>
           </div>
           <div style="min-width:300px">
-            <!-- Discount -->
+            <!-- Commercial Concession / Adjustment -->
             <div style="margin-bottom:14px">
-              <label class="form-label">Discount</label>
+              <label class="form-label">Commercial Concession / Adjustment</label>
               <div style="display:flex;gap:8px;align-items:center">
                 <div class="toggle-group" style="flex-shrink:0;width:120px">
                   <button class="toggle-btn ${(!invoice||invoice.discount_type!=='flat')?'active':''}" id="disc-pct-btn" onclick="_setDiscType('percentage')">%</button>
