@@ -17,8 +17,20 @@ const PAGES = {
 let currentPage = null;
 
 function navigate(page, params = {}) {
-  document.querySelectorAll('.nav-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.page === page);
+  // Update nav-item and dropdown-item active state
+  document.querySelectorAll('.nav-item, .dropdown-item').forEach(el => {
+    if (el.dataset.page) {
+      el.classList.toggle('active', el.dataset.page === page);
+    }
+  });
+
+  // Update active parent category dropdown highlights
+  document.querySelectorAll('.nav-dropdown').forEach(dropdown => {
+    const btn = dropdown.querySelector('.nav-dropdown-btn');
+    const activeSubItem = dropdown.querySelector(`.dropdown-item[data-page="${page}"]`);
+    if (btn) {
+      btn.classList.toggle('active-parent', !!activeSubItem);
+    }
   });
 
   currentPage = page;
@@ -36,12 +48,35 @@ function navigate(page, params = {}) {
   }
 }
 
-// ── Nav click handlers ────────────────────────────────────────────────────────
-document.querySelectorAll('.nav-item').forEach(el => {
+// ── Nav & Dropdown Click Handlers ─────────────────────────────────────────────
+document.querySelectorAll('.nav-item, .dropdown-item').forEach(el => {
   el.addEventListener('click', e => {
-    e.preventDefault();
-    navigate(el.dataset.page);
+    // If it's a dropdown toggle button, toggle menu open/close state
+    if (el.classList.contains('nav-dropdown-btn')) {
+      e.preventDefault();
+      e.stopPropagation();
+      const parentDropdown = el.closest('.nav-dropdown');
+      document.querySelectorAll('.nav-dropdown').forEach(d => {
+        if (d !== parentDropdown) d.classList.remove('open');
+      });
+      if (parentDropdown) parentDropdown.classList.toggle('open');
+      return;
+    }
+
+    if (el.dataset.page) {
+      e.preventDefault();
+      // Close open dropdowns
+      document.querySelectorAll('.nav-dropdown').forEach(d => d.classList.remove('open'));
+      navigate(el.dataset.page);
+    }
   });
+});
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('.nav-dropdown')) {
+    document.querySelectorAll('.nav-dropdown').forEach(d => d.classList.remove('open'));
+  }
 });
 
 function createNewInvoice(invoiceId = null, options = {}) {
