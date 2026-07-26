@@ -1,6 +1,6 @@
 {
   "name": "invoiceforge",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Fully offline desktop invoice application for Windows",
   "main": "main.js",
   "scripts": {
@@ -17,6 +17,7 @@
   "author": "InvoiceForge",
   "license": "MIT",
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "better-sqlite3": "^9.4.3",
     "electron-updater": "^6.8.9"
   },

@@ -25,7 +25,7 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: true
     },
     backgroundColor: '#1a1d23',
     show: true,
@@ -145,11 +145,29 @@ function configureCustomDataPath() {
   }
 }
 
+let isAppLocked = false;
+
+function initAppLockState() {
+  try {
+    const s = db.getSettings();
+    isAppLocked = Boolean(s && s.app_lock_enabled && s.admin_pin);
+  } catch (e) {
+    isAppLocked = false;
+  }
+}
+
+function assertUnlocked() {
+  if (isAppLocked) {
+    throw new Error('Access denied: Workstation is locked. Verification required.');
+  }
+}
+
 app.whenReady().then(() => {
   configureCustomDataPath();
 
   db = require('./db/database');
   db.initDatabase();
+  initAppLockState();
 
   mainWindow = createWindow();
   setupAutoUpdater();
@@ -183,57 +201,82 @@ app.on('window-all-closed', () => {
 
 // ─── Debug Logger ───────────────────────────────────────────────────────────
 ipcMain.handle('renderer-log-error', (_e, msg) => {
+  const cleanMsg = String(msg || '').slice(0, 2000).replace(/[\r\n]+/g, ' ');
   const logPath = path.join(app.getPath('userData'), 'renderer-errors.log');
-  const line = `[${new Date().toISOString()}] ${msg}\n`;
-  fs.appendFileSync(logPath, line);
-  console.error('[RENDERER ERROR]', msg);
+  const line = `[${new Date().toISOString()}] ${cleanMsg}\n`;
+  try { fs.appendFileSync(logPath, line); } catch (e) {}
+  console.error('[RENDERER ERROR]', cleanMsg);
 });
 
 // ─── Settings & Security ────────────────────────────────────────────────────────
+ipcMain.handle('is-app-locked', () => isAppLocked);
+ipcMain.handle('lock-app', () => {
+  const s = db.getSettings();
+  if (s && s.app_lock_enabled && s.admin_pin) {
+    isAppLocked = true;
+  }
+  return isAppLocked;
+});
+
 ipcMain.handle('get-settings', () => {
+  assertUnlocked();
   try { return db.getSettings(); } catch (e) { console.error('get-settings error:', e); throw e; }
 });
 ipcMain.handle('save-settings', (_e, data) => {
+  assertUnlocked();
   try { return db.saveSettings(data); } catch (e) { console.error('save-settings error:', e); throw e; }
 });
-ipcMain.handle('verify-admin-pin', (_e, pin) => db.verifyAdminPin(pin));
-ipcMain.handle('save-security-settings', (_e, data) => db.saveSecuritySettings(data));
+ipcMain.handle('verify-admin-pin', (_e, pin) => {
+  const res = db.verifyAdminPin(pin);
+  if (res && res.success) {
+    isAppLocked = false;
+  }
+  return res;
+});
+ipcMain.handle('save-security-settings', (_e, data) => {
+  assertUnlocked();
+  return db.saveSecuritySettings(data);
+});
 
 // ─── Clients ───────────────────────────────────────────────────────────────────
-ipcMain.handle('get-clients', () => db.getAllClients());
-ipcMain.handle('get-client', (_e, id) => db.getClient(id));
-ipcMain.handle('get-client-profile', (_e, id) => db.getClientProfile(id));
-ipcMain.handle('get-client-full-profile', (_e, id) => db.getClientFullProfile(id));
-ipcMain.handle('save-client', (_e, data) => db.saveClient(data));
-ipcMain.handle('delete-client', (_e, id) => db.deleteClient(id));
+ipcMain.handle('get-clients', () => { assertUnlocked(); return db.getAllClients(); });
+ipcMain.handle('get-client', (_e, id) => { assertUnlocked(); return db.getClient(id); });
+ipcMain.handle('get-client-profile', (_e, id) => { assertUnlocked(); return db.getClientProfile(id); });
+ipcMain.handle('get-client-full-profile', (_e, id) => { assertUnlocked(); return db.getClientFullProfile(id); });
+ipcMain.handle('save-client', (_e, data) => { assertUnlocked(); return db.saveClient(data); });
+ipcMain.handle('delete-client', (_e, id) => { assertUnlocked(); return db.deleteClient(id); });
 
 // ─── Products & Stock Management ───────────────────────────────────────────────
 ipcMain.handle('get-products', () => {
+  assertUnlocked();
   try { return db.getAllProducts(); } catch (e) { console.error('get-products error:', e); throw e; }
 });
-ipcMain.handle('get-product', (_e, id) => db.getProduct(id));
-ipcMain.handle('save-product', (_e, data) => db.saveProduct(data));
-ipcMain.handle('delete-product', (_e, id) => db.deleteProduct(id));
-ipcMain.handle('record-stock-transaction', (_e, tx) => db.recordStockTransaction(tx));
-ipcMain.handle('get-stock-transactions', (_e, productId) => db.getStockTransactions(productId));
+ipcMain.handle('get-product', (_e, id) => { assertUnlocked(); return db.getProduct(id); });
+ipcMain.handle('save-product', (_e, data) => { assertUnlocked(); return db.saveProduct(data); });
+ipcMain.handle('delete-product', (_e, id) => { assertUnlocked(); return db.deleteProduct(id); });
+ipcMain.handle('record-stock-transaction', (_e, tx) => { assertUnlocked(); return db.recordStockTransaction(tx); });
+ipcMain.handle('get-stock-transactions', (_e, productId) => { assertUnlocked(); return db.getStockTransactions(productId); });
 
 // ─── Invoices ──────────────────────────────────────────────────────────────────
-ipcMain.handle('get-invoices', (_e, filters) => db.getAllInvoices(filters));
-ipcMain.handle('get-invoice', (_e, id) => db.getInvoice(id));
+ipcMain.handle('get-invoices', (_e, filters) => { assertUnlocked(); return db.getAllInvoices(filters); });
+ipcMain.handle('get-invoice', (_e, id) => { assertUnlocked(); return db.getInvoice(id); });
 ipcMain.handle('delete-invoice', (_e, id) => {
+  assertUnlocked();
   db.restoreStockForInvoice(id);
   return db.deleteInvoice(id);
 });
-ipcMain.handle('duplicate-invoice', (_e, id) => db.duplicateInvoice(id));
-ipcMain.handle('update-invoice-status', (_e, id, status) => db.updateInvoiceStatus(id, status));
-ipcMain.handle('get-next-invoice-number', () => db.getNextInvoiceNumberObj());
+ipcMain.handle('duplicate-invoice', (_e, id) => { assertUnlocked(); return db.duplicateInvoice(id); });
+ipcMain.handle('update-invoice-status', (_e, id, status) => { assertUnlocked(); return db.updateInvoiceStatus(id, status); });
+ipcMain.handle('get-next-invoice-number', () => { assertUnlocked(); return db.getNextInvoiceNumberObj(); });
 ipcMain.handle('save-invoice', (_e, data) => {
+  assertUnlocked();
   return db.saveInvoiceAndReturn(data);
 });
-ipcMain.handle('get-dashboard-stats', () => db.getDashboardStats());
+ipcMain.handle('get-dashboard-stats', () => { assertUnlocked(); return db.getDashboardStats(); });
 
 // ─── PDF Export ────────────────────────────────────────────────────────────────
 ipcMain.handle('export-pdf', async (_e, htmlContent, defaultFilename) => {
+  assertUnlocked();
   let printWin = null;
   try {
     const exportsDir = path.join(app.getPath('userData'), 'exports');
@@ -252,7 +295,7 @@ ipcMain.handle('export-pdf', async (_e, htmlContent, defaultFilename) => {
 
     printWin = new BrowserWindow({
       show: false,
-      webPreferences: { contextIsolation: true, nodeIntegration: false }
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
     });
 
     await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent));
@@ -278,11 +321,12 @@ ipcMain.handle('export-pdf', async (_e, htmlContent, defaultFilename) => {
 });
 
 ipcMain.handle('print-invoice', async (_e, htmlContent) => {
+  assertUnlocked();
   let printWin = null;
   try {
     printWin = new BrowserWindow({
       show: true,
-      webPreferences: { contextIsolation: true, nodeIntegration: false }
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
     });
 
     await printWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(htmlContent));
@@ -339,14 +383,140 @@ ipcMain.handle('check-update-notification', () => {
   return db.checkPostUpdateNotification(app.getVersion());
 });
 
-// ─── Storage Info IPC ──────────────────────────────────────────────────────────
+// ─── Storage & Backup IPC ──────────────────────────────────────────────────────
 ipcMain.handle('get-data-paths', () => {
+  assertUnlocked();
   const dataDir = app.getPath('userData');
   const dbPath = db ? db.getDbPath() : path.join(dataDir, 'invoiceforge.db');
   return { dataDir, dbPath };
 });
 
 ipcMain.handle('open-data-dir', () => {
+  assertUnlocked();
   const dataDir = app.getPath('userData');
   shell.openPath(dataDir);
+});
+
+ipcMain.handle('export-backup-zip', async () => {
+  assertUnlocked();
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const defaultFilename = `InvoiceForge_Backup_${today}.zip`;
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export Full Database Backup Archive (.zip)',
+      defaultPath: path.join(app.getPath('downloads') || app.getPath('userData'), defaultFilename),
+      filters: [{ name: 'Zip Backup Archive', extensions: ['zip'] }]
+    });
+
+    if (canceled || !filePath) return { success: false, reason: 'canceled' };
+    const res = db.createDatabaseBackupZip(filePath);
+    shell.showItemInFolder(filePath);
+    return res;
+  } catch (err) {
+    console.error('Backup export error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('import-backup-zip', async () => {
+  assertUnlocked();
+  try {
+    const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select InvoiceForge Backup Archive (.zip)',
+      properties: ['openFile'],
+      filters: [{ name: 'Zip Backup Archive', extensions: ['zip'] }]
+    });
+
+    if (canceled || !filePaths || !filePaths[0]) return { success: false, reason: 'canceled' };
+    return db.restoreDatabaseFromZip(filePaths[0]);
+  } catch (err) {
+    console.error('Backup restore error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('restore-backup-file', async (_e, filePath) => {
+  assertUnlocked();
+  try {
+    if (!filePath || !fs.existsSync(filePath)) {
+      return { success: false, reason: 'Backup file path does not exist' };
+    }
+    return db.importMonthlyDataPackage(filePath);
+  } catch (err) {
+    console.error('Drag drop restore error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+// ─── Financial Reports IPC ─────────────────────────────────────────────────────
+ipcMain.handle('get-financial-report-data', (_e, filters) => {
+  assertUnlocked();
+  return db.getFinancialReportData(filters);
+});
+
+ipcMain.handle('export-financial-csv', async (_e, filters, type) => {
+  assertUnlocked();
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const reportType = type || 'invoices';
+    const defaultFilename = `InvoiceForge_${reportType.toUpperCase()}_Report_${today}.csv`;
+
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: `Export ${reportType.toUpperCase()} Financial Ledger (.csv)`,
+      defaultPath: path.join(app.getPath('downloads') || app.getPath('userData'), defaultFilename),
+      filters: [{ name: 'CSV Spreadsheet', extensions: ['csv'] }]
+    });
+
+    if (canceled || !filePath) return { success: false, reason: 'canceled' };
+
+    const csvContent = db.generateFinancialCsv(filters, reportType);
+    fs.writeFileSync(filePath, csvContent, 'utf8');
+    shell.showItemInFolder(filePath);
+    return { success: true, filePath };
+  } catch (err) {
+    console.error('CSV Export error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('export-monthly-data-package', async (_e, filters) => {
+  assertUnlocked();
+  try {
+    const periodStr = filters?.period === 'month'
+      ? `${filters.year || new Date().getFullYear()}-${filters.month || String(new Date().getMonth() + 1).padStart(2, '0')}`
+      : (filters?.period || 'all');
+    const defaultFilename = `InvoiceForge_Data_${periodStr}.zip`;
+
+    const { filePath, canceled } = await dialog.showSaveDialog(mainWindow, {
+      title: `Export ${periodStr} Data Package (.zip)`,
+      defaultPath: path.join(app.getPath('downloads') || app.getPath('userData'), defaultFilename),
+      filters: [{ name: 'InvoiceForge Data Package', extensions: ['zip'] }]
+    });
+
+    if (canceled || !filePath) return { success: false, reason: 'canceled' };
+
+    const res = db.exportMonthlyDataPackage(filters, filePath);
+    shell.showItemInFolder(filePath);
+    return res;
+  } catch (err) {
+    console.error('Monthly export error:', err);
+    return { success: false, reason: err.message };
+  }
+});
+
+ipcMain.handle('import-monthly-data-package', async () => {
+  assertUnlocked();
+  try {
+    const { filePaths, canceled } = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select InvoiceForge Data Package (.zip)',
+      properties: ['openFile'],
+      filters: [{ name: 'InvoiceForge Data Package or Backup', extensions: ['zip'] }]
+    });
+
+    if (canceled || !filePaths || !filePaths[0]) return { success: false, reason: 'canceled' };
+    return db.importMonthlyDataPackage(filePaths[0]);
+  } catch (err) {
+    console.error('Monthly import error:', err);
+    return { success: false, reason: err.message };
+  }
 });

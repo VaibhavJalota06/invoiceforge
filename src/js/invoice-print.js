@@ -27,7 +27,7 @@ function buildInvoicePrintHtml(inv, settings) {
     : items.map((item, idx) => `
         <tr style="background:${idx%2===0?'#fff':'#f9fafb'}">
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;color:#111">${_pEsc(item.description)}</td>
-          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:center;color:#374151">${Number(item.quantity).toLocaleString('en-IN')}</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:center;color:#374151">${Number(item.quantity).toLocaleString('en-IN')} ${_pEsc(item.unit || 'Pcs')}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:right;color:#374151">${fmt(item.rate)}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:#111">${fmt(item.amount)}</td>
         </tr>`
@@ -239,7 +239,7 @@ function buildInvoicePrintHtml(inv, settings) {
   <!-- ── Header ── -->
   <div class="inv-header">
     <div class="company-block">
-      ${settings && settings.logo_path ? `<img src="${settings.logo_path}" style="max-height:64px;max-width:200px;margin-bottom:12px;display:block;object-fit:contain" alt="Company Logo">` : ''}
+      ${settings && settings.logo_path ? `<img src="${_pEsc(settings.logo_path)}" style="max-height:64px;max-width:200px;margin-bottom:12px;display:block;object-fit:contain" alt="Company Logo">` : ''}
       <h1>${_pEsc(settings.company_name || 'Your Company')}</h1>
       <p>${_pEsc([
           settings.company_address,
@@ -339,7 +339,7 @@ function buildInvoicePrintHtml(inv, settings) {
 }
 
 function _pEsc(str) {
-  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 function _formatDate(dateStr) {

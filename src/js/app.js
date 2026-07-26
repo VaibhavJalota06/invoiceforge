@@ -8,6 +8,7 @@ const PAGES = {
   invoices:  () => renderInvoices(),
   clients:   () => renderClients(),
   stock:     () => renderStock(),
+  reports:   () => renderReports(),
   settings:  () => renderSettings()
 };
 
@@ -87,14 +88,19 @@ let _isLocked = false;
 
 async function checkAppLockOnLaunch() {
   try {
-    const settings = await window.api.getSettings();
+    const isLocked = await window.api.isAppLocked?.();
     const lockBtn = document.getElementById('btn-lock-app');
     
-    if (settings && settings.app_lock_enabled && settings.admin_pin) {
+    if (isLocked) {
       if (lockBtn) lockBtn.style.display = 'inline-flex';
-      lockAppScreen(settings.admin_name || 'Admin');
+      lockAppScreen('Admin');
     } else {
-      if (lockBtn) lockBtn.style.display = 'none';
+      const settings = await window.api.getSettings().catch(() => null);
+      if (settings && settings.app_lock_enabled && settings.admin_pin) {
+        if (lockBtn) lockBtn.style.display = 'inline-flex';
+      } else {
+        if (lockBtn) lockBtn.style.display = 'none';
+      }
     }
   } catch (err) {
     console.error('App Lock check error:', err);
@@ -144,6 +150,9 @@ async function unlockAppScreen() {
       if (inputEl) inputEl.value = '';
       if (errorEl) { errorEl.textContent = ''; errorEl.style.display = 'none'; }
       showToast('App unlocked successfully!', 'success');
+      if (typeof navigate === 'function' && currentPage) {
+        navigate(currentPage);
+      }
     } else {
       if (errorEl) { errorEl.textContent = res?.message || 'Incorrect PIN / Password'; errorEl.style.display = 'block'; }
       if (inputEl) { inputEl.style.borderColor = 'var(--danger)'; inputEl.focus(); }
@@ -165,8 +174,8 @@ document.getElementById('btn-toggle-pin-visibility')?.addEventListener('click', 
 });
 
 document.getElementById('btn-lock-app')?.addEventListener('click', async () => {
-  const settings = await window.api.getSettings();
-  lockAppScreen(settings?.admin_name || 'Admin');
+  await window.api.lockApp?.();
+  lockAppScreen('Admin');
 });
 
 window.lockAppScreen = lockAppScreen;
@@ -195,6 +204,63 @@ async function checkPostUpdateNotificationOnLaunch() {
     console.error('Update notification check error:', err);
   }
 }
+
+// ── Window-level Drag & Drop Backup Restore Listener ──────────────────────────
+let _dragCounter = 0;
+const dragOverlay = document.getElementById('drag-drop-overlay');
+
+window.addEventListener('dragenter', (e) => {
+  e.preventDefault();
+  _dragCounter++;
+  if (dragOverlay) dragOverlay.style.display = 'flex';
+});
+
+window.addEventListener('dragover', (e) => {
+  e.preventDefault();
+});
+
+window.addEventListener('dragleave', (e) => {
+  e.preventDefault();
+  _dragCounter--;
+  if (_dragCounter <= 0) {
+    _dragCounter = 0;
+    if (dragOverlay) dragOverlay.style.display = 'none';
+  }
+});
+
+window.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  _dragCounter = 0;
+  if (dragOverlay) dragOverlay.style.display = 'none';
+
+  const files = e.dataTransfer?.files;
+  if (!files || !files.length) return;
+  const file = files[0];
+  if (!file.name.toLowerCase().endsWith('.zip')) {
+    showToast('Please drop a valid .zip InvoiceForge backup file', 'error');
+    return;
+  }
+
+  showConfirm(
+    'Restore Database Backup (.zip)',
+    `Are you sure you want to restore <strong>${escHtml(file.name)}</strong> onto this workstation?<br><br><span style="color:var(--danger)">Warning: This will overwrite your active database with the dropped backup data.</span>`,
+    async () => {
+      showToast('Validating and restoring backup…', 'info');
+      try {
+        const res = await window.api.restoreBackupFile(file.path);
+        if (res?.success) {
+          showToast('🎉 Database restored successfully!', 'success');
+          setTimeout(() => navigate('dashboard'), 300);
+        } else {
+          showToast('Restore failed: ' + (res?.reason || 'Invalid backup'), 'error');
+        }
+      } catch (err) {
+        showToast('Restore error: ' + err.message, 'error');
+      }
+    },
+    true
+  );
+});
 
 // ── Start on Dashboard with Lock & Update Checks ─────────────────────────────
 checkAppLockOnLaunch();

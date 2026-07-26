@@ -42,8 +42,8 @@ async function openInvoiceEditor(invoiceId, options = {}) {
   }
 
   _editorItems = invoice?.items?.length
-    ? invoice.items.map(i => ({ ...i }))
-    : [{ description: '', quantity: 1, rate: 0, amount: 0 }];
+    ? invoice.items.map(i => ({ unit: 'Pcs', ...i }))
+    : [{ description: '', quantity: 1, unit: 'Pcs', rate: 0, amount: 0 }];
 
   _editorTaxLines = invoice?.tax_lines?.length
     ? invoice.tax_lines.map(t => ({ ...t }))
@@ -127,9 +127,10 @@ async function openInvoiceEditor(invoiceId, options = {}) {
         <table class="line-items-table">
           <thead><tr>
             <th class="col-desc">Description</th>
-            <th class="col-qty">Qty</th>
-            <th class="col-rate">Rate</th>
-            <th class="col-amt">Amount</th>
+            <th class="col-qty" style="width:90px">Qty</th>
+            <th class="col-unit" style="width:110px">Unit</th>
+            <th class="col-rate" style="width:120px">Rate</th>
+            <th class="col-amt" style="width:120px">Amount</th>
             <th class="col-del"></th>
           </tr></thead>
           <tbody id="line-items-body"></tbody>
@@ -204,7 +205,7 @@ async function openInvoiceEditor(invoiceId, options = {}) {
   // Line items
   _renderLineItems();
   document.getElementById('btn-add-line').addEventListener('click', () => {
-    _editorItems.push({ description:'', quantity:1, rate:0, amount:0 });
+    _editorItems.push({ description: '', quantity: 1, unit: 'Pcs', rate: 0, amount: 0 });
     _renderLineItems();
   });
 
@@ -282,6 +283,19 @@ function _renderLineItems() {
         <input class="form-input" type="number" min="0" step="0.01" value="${item.quantity}"
           oninput="_editorItems[${idx}].quantity=parseFloat(this.value)||0;_recalcTotals()">
       </td>
+      <td class="col-unit">
+        <select class="form-select" style="font-size:12px;padding:4px 6px" onchange="_editorItems[${idx}].unit=this.value">
+          <option value="Pcs" ${(!item.unit || item.unit==='Pcs')?'selected':''}>Pcs (Pieces)</option>
+          <option value="Pack" ${item.unit==='Pack'?'selected':''}>Pack (Packs)</option>
+          <option value="Box" ${item.unit==='Box'?'selected':''}>Box (Boxes)</option>
+          <option value="Set" ${item.unit==='Set'?'selected':''}>Set (Sets)</option>
+          <option value="Kg" ${item.unit==='Kg'?'selected':''}>Kg (Kilograms)</option>
+          <option value="Litre" ${item.unit==='Litre'?'selected':''}>Litre (Liters)</option>
+          <option value="Mtr" ${item.unit==='Mtr'?'selected':''}>Mtr (Meters)</option>
+          <option value="Dzn" ${item.unit==='Dzn'?'selected':''}>Dzn (Dozens)</option>
+          <option value="Unit" ${item.unit==='Unit'?'selected':''}>Unit</option>
+        </select>
+      </td>
       <td class="col-rate">
         <input class="form-input" type="number" min="0" step="0.01" value="${item.rate}"
           oninput="_editorItems[${idx}].rate=parseFloat(this.value)||0;_recalcTotals()">
@@ -300,6 +314,7 @@ function _onSelectInventoryProduct(idx, productId) {
   if (p) {
     _editorItems[idx].product_id = p.id;
     _editorItems[idx].description = p.name;
+    _editorItems[idx].unit = p.unit || 'Pcs';
     _editorItems[idx].rate = p.selling_rate || 0;
     _renderLineItems();
   }

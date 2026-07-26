@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('api', {
   saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
   verifyAdminPin: (pin) => ipcRenderer.invoke('verify-admin-pin', pin),
   saveSecuritySettings: (data) => ipcRenderer.invoke('save-security-settings', data),
+  isAppLocked: () => ipcRenderer.invoke('is-app-locked'),
+  lockApp: () => ipcRenderer.invoke('lock-app'),
 
   // Clients
   getClients: () => ipcRenderer.invoke('get-clients'),
@@ -37,9 +39,18 @@ contextBridge.exposeInMainWorld('api', {
   exportPdf: (htmlContent, defaultFilename) => ipcRenderer.invoke('export-pdf', htmlContent, defaultFilename),
   printInvoice: (htmlContent) => ipcRenderer.invoke('print-invoice', htmlContent),
 
-  // Storage & Data Paths
+  // Storage & Backup
   getDataPaths: () => ipcRenderer.invoke('get-data-paths'),
   openDataDir: () => ipcRenderer.invoke('open-data-dir'),
+  exportBackupZip: () => ipcRenderer.invoke('export-backup-zip'),
+  importBackupZip: () => ipcRenderer.invoke('import-backup-zip'),
+  restoreBackupFile: (filePath) => ipcRenderer.invoke('restore-backup-file', filePath),
+
+  // Financial Reports & Selective Data Transfers
+  getFinancialReportData: (filters) => ipcRenderer.invoke('get-financial-report-data', filters),
+  exportFinancialCsv: (filters, type) => ipcRenderer.invoke('export-financial-csv', filters, type),
+  exportMonthlyDataPackage: (filters) => ipcRenderer.invoke('export-monthly-data-package', filters),
+  importMonthlyDataPackage: () => ipcRenderer.invoke('import-monthly-data-package'),
 
   // Auto-Updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),

@@ -3,6 +3,7 @@
 const path = require('path');
 const { app } = require('electron');
 const Database = require('better-sqlite3');
+const crypto = require('crypto');
 
 let db;
 
@@ -130,6 +131,7 @@ function createSchema() {
     `ALTER TABLE settings ADD COLUMN machine_guid TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN last_installed_version TEXT DEFAULT ''`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
+    `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
     `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`
   ];
   for (const m of migrations) {
@@ -173,29 +175,95 @@ function saveSettings(data) {
   return true;
 }
 
+// ── Settings & Security Helpers ────────────────────────────────────────────────
+function hashPin(pin, salt = null) {
+  if (!pin) return '';
+  if (!salt) {
+    salt = crypto.randomBytes(16).toString('hex');
+  }
+  const hash = crypto.pbkdf2Sync(pin, salt, 10000, 32, 'sha256').toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPinHash(inputPin, storedPin) {
+  if (!storedPin) return true;
+  if (!inputPin) return false;
+  const cleanInput = String(inputPin).trim();
+  const cleanStored = String(storedPin).trim();
+
+  // Support legacy plaintext PIN auto-migration
+  if (!cleanStored.includes(':')) {
+    return cleanInput === cleanStored;
+  }
+
+  const parts = cleanStored.split(':');
+  if (parts.length !== 2) return false;
+  const [salt, storedHash] = parts;
+  const hash = crypto.pbkdf2Sync(cleanInput, salt, 10000, 32, 'sha256').toString('hex');
+  try {
+    return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(storedHash, 'hex'));
+  } catch (e) {
+    return false;
+  }
+}
+
+let failedAttempts = 0;
+let lockoutUntil = 0;
+
 function verifyAdminPin(inputPin) {
   const s = getSettings();
   if (!s || !s.app_lock_enabled || !s.admin_pin) {
     return { success: true, message: 'No lock configured' };
   }
-  const cleanInput = String(inputPin || '').trim();
-  if (cleanInput === String(s.admin_pin).trim()) {
-    return { success: true };
+
+  const now = Date.now();
+  if (now < lockoutUntil) {
+    const remainingSecs = Math.ceil((lockoutUntil - now) / 1000);
+    return { success: false, message: `Too many failed attempts. Security lockout active. Try again in ${remainingSecs} seconds.` };
   }
-  return { success: false, message: 'Incorrect PIN / Password' };
+
+  const isValid = verifyPinHash(inputPin, s.admin_pin);
+  if (isValid) {
+    failedAttempts = 0;
+    // Upgrade legacy plaintext PIN to salt:hash format in SQLite
+    if (!String(s.admin_pin).includes(':')) {
+      const hashedPin = hashPin(inputPin);
+      db.prepare('UPDATE settings SET admin_pin = ? WHERE id = 1').run(hashedPin);
+    }
+    return { success: true };
+  } else {
+    failedAttempts++;
+    if (failedAttempts >= 5) {
+      lockoutUntil = Date.now() + 60000; // 60s security lockout
+      failedAttempts = 0;
+      return { success: false, message: 'Too many failed PIN attempts. Workstation locked for 60 seconds.' };
+    }
+    const remaining = 5 - failedAttempts;
+    return { success: false, message: `Incorrect PIN / Password. (${remaining} attempt${remaining !== 1 ? 's' : ''} remaining)` };
+  }
 }
 
 function saveSecuritySettings(data) {
   const enabled = data.enabled ? 1 : 0;
   const adminName = String(data.adminName || 'Admin').trim();
-  const newPin = String(data.pin || '').trim();
+  const rawPin = String(data.pin || '').trim();
+
+  let finalPin = rawPin;
+  if (enabled && rawPin) {
+    if (!rawPin.includes(':')) {
+      finalPin = hashPin(rawPin);
+    }
+  } else if (!enabled) {
+    finalPin = '';
+  }
 
   db.prepare(`
     UPDATE settings SET app_lock_enabled = ?, admin_name = ?, admin_pin = ? WHERE id = 1
-  `).run(enabled, adminName, newPin);
+  `).run(enabled, adminName, finalPin);
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
   return getSettings();
 }
+
 
 // ── Clients ───────────────────────────────────────────────────────────────────
 function getAllClients() {
@@ -347,10 +415,19 @@ function saveInvoice(data) {
   const saveItems = db.transaction((invoiceId, rows) => {
     db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(invoiceId);
     const stmt = db.prepare(`
-      INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit, rate, amount, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    rows.forEach((item, i) => stmt.run(invoiceId, Number(item.product_id) || 0, item.description || '', item.quantity || 1, item.rate || 0, item.amount || 0, i));
+    rows.forEach((item, i) => stmt.run(
+      invoiceId,
+      Number(item.product_id) || 0,
+      item.description || '',
+      item.quantity || 1,
+      item.unit || 'Pcs',
+      item.rate || 0,
+      item.amount || 0,
+      i
+    ));
   });
 
   let savedId;
@@ -621,7 +698,7 @@ function deductStockForInvoice(invoiceId, items, clientId) {
     if (item.product_id) {
       p = getProduct(item.product_id);
     }
-    if (!p && item.description) {
+    if (!p && item.description && typeof item.description === 'string' && item.description.trim()) {
       p = db.prepare(`SELECT * FROM products WHERE LOWER(name) = LOWER(?)`).get(item.description.trim());
     }
     if (p) {
@@ -698,6 +775,485 @@ function getClientFullProfile(clientId) {
   };
 }
 
+function getFinancialReportData(filters = {}) {
+  let dateFrom = '';
+  let dateTo = '';
+  const now = new Date();
+  const yearStr = String(filters.year || now.getFullYear());
+
+  if (filters.period === 'month') {
+    const m = String(filters.month || (now.getMonth() + 1)).padStart(2, '0');
+    dateFrom = `${yearStr}-${m}-01`;
+    const lastDay = new Date(Number(yearStr), Number(m), 0).getDate();
+    dateTo = `${yearStr}-${m}-${String(lastDay).padStart(2, '0')}`;
+  } else if (filters.period === 'year') {
+    dateFrom = `${yearStr}-01-01`;
+    dateTo = `${yearStr}-12-31`;
+  } else if (filters.period === 'custom') {
+    dateFrom = filters.date_from || '1970-01-01';
+    dateTo = filters.date_to || '2099-12-31';
+  } else {
+    // All time
+    dateFrom = '1970-01-01';
+    dateTo = '2099-12-31';
+  }
+
+  const query = `
+    SELECT i.*, c.name AS client_name, c.company_name AS client_company, c.email AS client_email, c.phone AS client_phone, c.gstin AS client_gstin
+    FROM invoices i
+    LEFT JOIN clients c ON i.client_id = c.id
+    WHERE i.invoice_date >= ? AND i.invoice_date <= ?
+    ORDER BY i.invoice_date DESC
+  `;
+  const invoices = db.prepare(query).all(dateFrom, dateTo);
+
+  let totalBilled = 0;
+  let subtotalSum = 0;
+  let discountSum = 0;
+  let taxSum = 0;
+  let paidAmount = 0;
+  let outstandingAmount = 0;
+  let totalInvoicesCount = 0;
+  let draftInvoicesCount = 0;
+
+  const taxBreakdownMap = {};
+  const clientSummaryMap = {};
+
+  invoices.forEach(inv => {
+    if (inv.status === 'draft') {
+      draftInvoicesCount++;
+      return;
+    }
+    totalInvoicesCount++;
+    const grand = Number(inv.grand_total) || 0;
+    const sub = Number(inv.subtotal) || 0;
+    const disc = Number(inv.discount_amount) || 0;
+    const tax = Number(inv.tax_amount) || 0;
+
+    totalBilled += grand;
+    subtotalSum += sub;
+    discountSum += disc;
+    taxSum += tax;
+
+    if (inv.status === 'paid') paidAmount += grand;
+    else if (inv.status === 'unpaid' || inv.status === 'overdue') {
+      outstandingAmount += grand;
+    }
+
+    // Parse Tax Lines
+    let lines = [];
+    try { lines = JSON.parse(inv.tax_lines || '[]'); } catch(e){}
+    if (Array.isArray(lines)) {
+      lines.forEach(t => {
+        const name = String(t.name || 'Tax').trim();
+        const amt = Number(t.amount) || 0;
+        if (!taxBreakdownMap[name]) taxBreakdownMap[name] = 0;
+        taxBreakdownMap[name] += amt;
+      });
+    }
+
+    // Client Breakdown
+    const cId = inv.client_id || 0;
+    const cName = inv.client_name || 'Direct Customer';
+    if (!clientSummaryMap[cId]) {
+      clientSummaryMap[cId] = {
+        id: cId,
+        name: cName,
+        company_name: inv.client_company || '',
+        email: inv.client_email || '',
+        phone: inv.client_phone || '',
+        gstin: inv.client_gstin || '',
+        invoiceCount: 0,
+        totalBilled: 0,
+        outstanding: 0
+      };
+    }
+    clientSummaryMap[cId].invoiceCount++;
+    clientSummaryMap[cId].totalBilled += grand;
+    if (inv.status === 'unpaid' || inv.status === 'overdue') {
+      clientSummaryMap[cId].outstanding += grand;
+    }
+  });
+
+  const taxBreakdown = Object.keys(taxBreakdownMap).map(k => ({
+    name: k,
+    amount: taxBreakdownMap[k]
+  }));
+
+  const clientSummary = Object.values(clientSummaryMap).sort((a, b) => b.totalBilled - a.totalBilled);
+
+  return {
+    dateFrom,
+    dateTo,
+    metrics: {
+      totalBilled,
+      subtotalSum,
+      discountSum,
+      taxSum,
+      paidAmount,
+      outstandingAmount,
+      totalInvoicesCount,
+      draftInvoicesCount
+    },
+    taxBreakdown,
+    clients: clientSummary,
+    invoices
+  };
+}
+
+function _csvEsc(str) {
+  return String(str || '').replace(/"/g, '""').replace(/[\r\n]+/g, ' ');
+}
+
+function generateFinancialCsv(filters = {}, type = 'invoices') {
+  const reports = getFinancialReportData(filters);
+  let csv = '';
+
+  if (type === 'tax') {
+    csv = 'Invoice Number,Invoice Date,Client Name,Client GSTIN,Subtotal,Tax Amount,Grand Total,Status\n';
+    reports.invoices.forEach(inv => {
+      csv += `"${_csvEsc(inv.invoice_number)}","${_csvEsc(inv.invoice_date)}","${_csvEsc(inv.client_name)}","${_csvEsc(inv.client_gstin)}",${inv.subtotal},${inv.tax_amount},${inv.grand_total},"${inv.status}"\n`;
+    });
+  } else if (type === 'clients') {
+    csv = 'Client Name,Company Name,Email,Phone,GSTIN,Total Invoices,Total Billed,Outstanding Balance\n';
+    reports.clients.forEach(c => {
+      csv += `"${_csvEsc(c.name)}","${_csvEsc(c.company_name)}","${_csvEsc(c.email)}","${_csvEsc(c.phone)}","${_csvEsc(c.gstin)}",${c.invoiceCount},${c.totalBilled},${c.outstanding}\n`;
+    });
+  } else if (type === 'products') {
+    csv = 'Product Name,SKU,Unit,Cost Price,Selling Rate,Current Stock,Reorder Level\n';
+    const products = getAllProducts();
+    products.forEach(p => {
+      csv += `"${_csvEsc(p.name)}","${_csvEsc(p.sku)}","${_csvEsc(p.unit)}",${p.cost_price},${p.selling_rate},${p.current_stock},${p.reorder_level}\n`;
+    });
+  } else {
+    // Default Invoices Ledger
+    csv = 'Invoice Number,Invoice Date,Due Date,Client Name,Subtotal,Discount Amount,Tax Amount,Grand Total,Status,Notes\n';
+    reports.invoices.forEach(inv => {
+      csv += `"${_csvEsc(inv.invoice_number)}","${_csvEsc(inv.invoice_date)}","${_csvEsc(inv.due_date)}","${_csvEsc(inv.client_name)}",${inv.subtotal},${inv.discount_amount},${inv.tax_amount},${inv.grand_total},"${inv.status}","${_csvEsc(inv.notes)}"\n`;
+    });
+  }
+
+  return csv;
+}
+
+function createDatabaseBackupZip(destinationPath) {
+  const fs = require('fs');
+  const AdmZip = require('adm-zip');
+  const zip = new AdmZip();
+
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+
+  const dbPath = getDbPath();
+  if (!fs.existsSync(dbPath)) throw new Error('Database file not found');
+
+  const settings = getSettings();
+  const clientCount = db.prepare('SELECT COUNT(*) AS cnt FROM clients').get().cnt;
+  const invoiceCount = db.prepare('SELECT COUNT(*) AS cnt FROM invoices').get().cnt;
+  const productCount = db.prepare('SELECT COUNT(*) AS cnt FROM products').get().cnt;
+
+  const manifest = {
+    appName: 'InvoiceForge',
+    appVersion: (app && typeof app.getVersion === 'function') ? app.getVersion() : '1.0.6',
+    backupDate: new Date().toISOString(),
+    stats: { clientCount, invoiceCount, productCount },
+    companyName: settings ? settings.company_name : ''
+  };
+
+  zip.addLocalFile(dbPath, '', 'invoiceforge.db');
+  zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
+
+  zip.writeZip(destinationPath);
+  return { success: true, filePath: destinationPath, manifest };
+}
+
+function restoreDatabaseFromZip(zipPathOrBuffer) {
+  const fs = require('fs');
+  const AdmZip = require('adm-zip');
+  const zip = new AdmZip(zipPathOrBuffer);
+
+  const dbEntry = zip.getEntry('invoiceforge.db');
+  if (!dbEntry) {
+    throw new Error('Invalid backup file: missing invoiceforge.db inside archive');
+  }
+
+  const os = require('os');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'invoiceforge_restore_'));
+  const tempDbPath = path.join(tempDir, 'invoiceforge.db');
+
+  fs.writeFileSync(tempDbPath, dbEntry.getData());
+
+  const TempDb = require('better-sqlite3');
+  let testDb;
+  let manifest = {};
+  try {
+    const manifestEntry = zip.getEntry('manifest.json');
+    if (manifestEntry) {
+      manifest = JSON.parse(manifestEntry.getData().toString('utf8'));
+    }
+    testDb = new TempDb(tempDbPath, { readonly: true });
+    const tables = testDb.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
+    const tableNames = tables.map(t => t.name);
+    const required = ['settings', 'clients', 'invoices', 'products'];
+    const missing = required.filter(r => !tableNames.includes(r));
+    if (missing.length > 0) {
+      throw new Error(`Backup file is missing required tables: ${missing.join(', ')}`);
+    }
+  } catch (err) {
+    if (testDb) try { testDb.close(); } catch(e){}
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch(e){}
+    throw new Error('Database validation failed: ' + err.message);
+  } finally {
+    if (testDb) try { testDb.close(); } catch(e){}
+  }
+
+  closeDatabase();
+
+  const activeDbPath = getDbPath();
+  const backupOriginalPath = activeDbPath + '.bak_' + Date.now();
+
+  try {
+    if (fs.existsSync(activeDbPath)) {
+      fs.copyFileSync(activeDbPath, backupOriginalPath);
+    }
+
+    fs.copyFileSync(tempDbPath, activeDbPath);
+
+    if (fs.existsSync(activeDbPath + '-wal')) fs.unlinkSync(activeDbPath + '-wal');
+    if (fs.existsSync(activeDbPath + '-shm')) fs.unlinkSync(activeDbPath + '-shm');
+
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch(e){}
+
+    initDatabase();
+
+    return {
+      success: true,
+      message: 'Database backup restored successfully!',
+      manifest
+    };
+  } catch (err) {
+    if (fs.existsSync(backupOriginalPath)) {
+      try { fs.copyFileSync(backupOriginalPath, activeDbPath); } catch(e){}
+    }
+    initDatabase();
+    throw new Error('Database restore failed: ' + err.message);
+  }
+}
+
+function exportMonthlyDataPackage(filters = {}, destinationPath) {
+  const fs = require('fs');
+  const AdmZip = require('adm-zip');
+  const zip = new AdmZip();
+
+  const report = getFinancialReportData(filters);
+  const periodLabel = filters.period === 'month'
+    ? `${filters.year || new Date().getFullYear()}-${filters.month || String(new Date().getMonth() + 1).padStart(2, '0')}`
+    : (filters.period || 'all');
+
+  const fullInvoices = report.invoices.map(inv => getInvoice(inv.id)).filter(Boolean);
+
+  const clientIds = [...new Set(fullInvoices.map(i => i.client_id).filter(Boolean))];
+  const fullClients = clientIds.map(id => getClient(id)).filter(Boolean);
+
+  const stockTransactions = db.prepare(`
+    SELECT * FROM stock_transactions
+    WHERE created_at >= ? AND created_at <= ?
+  `).all(report.dateFrom + ' 00:00:00', report.dateTo + ' 23:59:59');
+
+  const settings = getSettings();
+
+  const manifest = {
+    appName: 'InvoiceForge',
+    appVersion: (app && typeof app.getVersion === 'function') ? app.getVersion() : '1.0.6',
+    packageType: 'MONTHLY_DATA_PACKAGE',
+    exportDate: new Date().toISOString(),
+    periodLabel,
+    dateFrom: report.dateFrom,
+    dateTo: report.dateTo,
+    companyName: settings ? settings.company_name : '',
+    stats: {
+      invoicesCount: fullInvoices.length,
+      clientsCount: fullClients.length,
+      stockTxCount: stockTransactions.length,
+      totalBilled: report.metrics.totalBilled
+    }
+  };
+
+  const payload = {
+    manifest,
+    invoices: fullInvoices,
+    clients: fullClients,
+    stockTransactions
+  };
+
+  zip.addFile('manifest.json', Buffer.from(JSON.stringify(manifest, null, 2)));
+  zip.addFile('data.json', Buffer.from(JSON.stringify(payload, null, 2)));
+
+  zip.writeZip(destinationPath);
+  return { success: true, filePath: destinationPath, manifest };
+}
+
+function importMonthlyDataPackage(packagePathOrBuffer) {
+  const fs = require('fs');
+  const AdmZip = require('adm-zip');
+  const zip = new AdmZip(packagePathOrBuffer);
+
+  const dbEntry = zip.getEntry('invoiceforge.db');
+  if (dbEntry) {
+    return restoreDatabaseFromZip(packagePathOrBuffer);
+  }
+
+  const dataEntry = zip.getEntry('data.json');
+  if (!dataEntry) {
+    throw new Error('Invalid package file: missing data.json inside archive');
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(dataEntry.getData().toString('utf8'));
+  } catch (e) {
+    throw new Error('Corrupted data package: failed to parse JSON data');
+  }
+
+  const manifest = payload.manifest || {};
+  const importedClients = Array.isArray(payload.clients) ? payload.clients : [];
+  const importedInvoices = Array.isArray(payload.invoices) ? payload.invoices : [];
+
+  const clientMap = {};
+
+  const mergeTransaction = db.transaction(() => {
+    // 1. Merge Clients
+    importedClients.forEach(c => {
+      let localClient = null;
+      if (c.gstin && c.gstin.trim()) {
+        localClient = db.prepare('SELECT * FROM clients WHERE LOWER(gstin) = LOWER(?)').get(c.gstin.trim());
+      }
+      if (!localClient && c.name && c.name.trim()) {
+        localClient = db.prepare('SELECT * FROM clients WHERE LOWER(name) = LOWER(?)').get(c.name.trim());
+      }
+
+      if (localClient) {
+        const updatedRow = {
+          id: localClient.id,
+          name: localClient.name,
+          company_name: localClient.company_name || c.company_name || '',
+          billing_address: localClient.billing_address || c.billing_address || '',
+          email: localClient.email || c.email || '',
+          phone: localClient.phone || c.phone || '',
+          gstin: localClient.gstin || c.gstin || ''
+        };
+        db.prepare(`
+          UPDATE clients SET company_name=@company_name, billing_address=@billing_address,
+            email=@email, phone=@phone, gstin=@gstin WHERE id=@id
+        `).run(updatedRow);
+        clientMap[c.id] = localClient.id;
+      } else {
+        const res = db.prepare(`
+          INSERT INTO clients (name, company_name, billing_address, email, phone, gstin)
+          VALUES (@name, @company_name, @billing_address, @email, @phone, @gstin)
+        `).run({
+          name: String(c.name || 'Client').trim(),
+          company_name: String(c.company_name || '').trim(),
+          billing_address: String(c.billing_address || '').trim(),
+          email: String(c.email || '').trim(),
+          phone: String(c.phone || '').trim(),
+          gstin: String(c.gstin || '').trim()
+        });
+        clientMap[c.id] = Number(res.lastInsertRowid);
+      }
+    });
+
+    // 2. Merge Invoices
+    let insertedInvoicesCount = 0;
+    let updatedInvoicesCount = 0;
+
+    importedInvoices.forEach(inv => {
+      const targetClientId = inv.client_id ? (clientMap[inv.client_id] || inv.client_id) : null;
+      const invData = {
+        invoice_number:  String(inv.invoice_number || '').trim(),
+        client_id:       targetClientId,
+        client_snapshot: typeof inv.client_snapshot === 'string' ? inv.client_snapshot : JSON.stringify(inv.client_snapshot || {}),
+        invoice_date:    inv.invoice_date || new Date().toISOString().slice(0, 10),
+        due_date:        inv.due_date || '',
+        currency:        inv.currency || 'INR',
+        subtotal:        Number(inv.subtotal) || 0,
+        discount_type:   inv.discount_type || 'flat',
+        discount_value:  Number(inv.discount_value) || 0,
+        discount_amount: Number(inv.discount_amount) || 0,
+        tax_lines:       typeof inv.tax_lines === 'string' ? inv.tax_lines : JSON.stringify(inv.tax_lines || []),
+        tax_amount:      Number(inv.tax_amount) || 0,
+        grand_total:     Number(inv.grand_total) || 0,
+        notes:           String(inv.notes || '').trim(),
+        status:          inv.status || 'draft'
+      };
+
+      const existingInv = db.prepare('SELECT id FROM invoices WHERE invoice_number = ?').get(invData.invoice_number);
+      let localInvId;
+
+      if (existingInv) {
+        localInvId = existingInv.id;
+        invData.id = localInvId;
+        invData.updated_at = new Date().toISOString();
+        db.prepare(`
+          UPDATE invoices SET client_id=@client_id, client_snapshot=@client_snapshot,
+            invoice_date=@invoice_date, due_date=@due_date, currency=@currency,
+            subtotal=@subtotal, discount_type=@discount_type, discount_value=@discount_value,
+            discount_amount=@discount_amount, tax_lines=@tax_lines, tax_amount=@tax_amount,
+            grand_total=@grand_total, notes=@notes, status=@status, updated_at=@updated_at
+          WHERE id=@id
+        `).run(invData);
+        updatedInvoicesCount++;
+      } else {
+        const res = db.prepare(`
+          INSERT INTO invoices (invoice_number, client_id, client_snapshot, invoice_date, due_date, currency,
+            subtotal, discount_type, discount_value, discount_amount, tax_lines, tax_amount,
+            grand_total, notes, status)
+          VALUES (@invoice_number, @client_id, @client_snapshot, @invoice_date, @due_date, @currency,
+            @subtotal, @discount_type, @discount_value, @discount_amount, @tax_lines,
+            @tax_amount, @grand_total, @notes, @status)
+        `).run(invData);
+        localInvId = Number(res.lastInsertRowid);
+        insertedInvoicesCount++;
+      }
+
+      db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(localInvId);
+      const itemStmt = db.prepare(`
+        INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount, sort_order)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      (inv.items || []).forEach((item, i) => {
+        itemStmt.run(
+          localInvId,
+          Number(item.product_id) || 0,
+          String(item.description || ''),
+          Number(item.quantity) || 1,
+          Number(item.rate) || 0,
+          Number(item.amount) || 0,
+          i
+        );
+      });
+    });
+
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+
+    return {
+      insertedInvoicesCount,
+      updatedInvoicesCount,
+      totalMergedInvoices: importedInvoices.length,
+      clientsMergedCount: Object.keys(clientMap).length
+    };
+  });
+
+  const summary = mergeTransaction();
+
+  return {
+    success: true,
+    packageType: 'MONTHLY_DATA_PACKAGE',
+    message: `Successfully merged data package for ${manifest.periodLabel || 'selected period'}!`,
+    summary,
+    manifest
+  };
+}
+
 function closeDatabase() {
   if (db) {
     try {
@@ -718,5 +1274,7 @@ module.exports = {
   saveInvoice, saveInvoiceAndReturn, deleteInvoice, duplicateInvoice,
   updateInvoiceStatus, getDashboardStats,
   getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
-  deductStockForInvoice, restoreStockForInvoice
+  deductStockForInvoice, restoreStockForInvoice,
+  getFinancialReportData, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
+  exportMonthlyDataPackage, importMonthlyDataPackage
 };

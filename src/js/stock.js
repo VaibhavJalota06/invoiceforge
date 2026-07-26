@@ -184,10 +184,14 @@ async function openProductModal(productId = null) {
         <div class="form-group">
           <label class="form-label" for="p-unit">Unit of Measure</label>
           <select class="form-select" id="p-unit">
-            <option value="Pcs" ${p.unit==='Pcs'?'selected':''}>Pcs (Pieces)</option>
+            <option value="Pcs" ${(!p.unit || p.unit==='Pcs')?'selected':''}>Pcs (Pieces)</option>
+            <option value="Pack" ${p.unit==='Pack'?'selected':''}>Pack (Packs)</option>
+            <option value="Box" ${p.unit==='Box'?'selected':''}>Box (Boxes)</option>
+            <option value="Set" ${p.unit==='Set'?'selected':''}>Set (Sets)</option>
             <option value="Kg" ${p.unit==='Kg'?'selected':''}>Kg (Kilograms)</option>
-            <option value="Box" ${p.unit==='Box'?'selected':''}>Box</option>
-            <option value="Litre" ${p.unit==='Litre'?'selected':''}>Litre</option>
+            <option value="Litre" ${p.unit==='Litre'?'selected':''}>Litre (Liters)</option>
+            <option value="Mtr" ${p.unit==='Mtr'?'selected':''}>Mtr (Meters)</option>
+            <option value="Dzn" ${p.unit==='Dzn'?'selected':''}>Dzn (Dozens)</option>
             <option value="Unit" ${p.unit==='Unit'?'selected':''}>Unit</option>
           </select>
         </div>

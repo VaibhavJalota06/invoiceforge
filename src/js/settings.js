@@ -187,6 +187,23 @@ async function renderSettings() {
         <button type="button" class="btn btn-secondary" id="btn-open-data-dir">${ICONS.external || ''} Open Local Storage Directory</button>
       </div>
 
+      <!-- Database Backup & Portability (.zip Archives) -->
+      <div class="card" style="margin-bottom:18px">
+        <div class="form-section-title">Database Backup, Restore &amp; PC/Laptop Portability (.zip)</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:14px;line-height:1.6">
+          Export your entire billing database, client records, and settings into a single <strong>.zip backup archive</strong>.
+          You can copy the .zip file to a USB pen drive to sync or restore data across your PC and laptop.
+        </p>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap">
+          <button type="button" class="btn btn-primary" id="btn-export-backup-zip">${ICONS.pdf || ''} Export Full Backup (.zip)</button>
+          <button type="button" class="btn btn-secondary" id="btn-import-backup-zip">${ICONS.plus || ''} Restore from Backup (.zip)</button>
+        </div>
+        <small style="color:var(--text-3);font-size:11.5px;margin-top:10px;display:block">
+          💡 Tip: You can also drag and drop any InvoiceForge .zip backup file anywhere onto the app window to instantly restore data!
+        </small>
+      </div>
+
     </form>
   `;
 
@@ -202,6 +219,33 @@ async function renderSettings() {
 
   document.getElementById('btn-open-data-dir')?.addEventListener('click', () => {
     window.api.openDataDir?.();
+  });
+
+  document.getElementById('btn-export-backup-zip')?.addEventListener('click', async () => {
+    const res = await window.api.exportBackupZip();
+    if (res?.success) {
+      showToast('Database backup archive (.zip) exported successfully!', 'success');
+    } else if (res?.reason !== 'canceled') {
+      showToast('Backup export failed: ' + (res?.reason || 'Unknown error'), 'error');
+    }
+  });
+
+  document.getElementById('btn-import-backup-zip')?.addEventListener('click', async () => {
+    showConfirm(
+      'Restore Database Backup (.zip)',
+      'Select an InvoiceForge backup archive (.zip) to restore.<br><br><span style="color:var(--danger)">Warning: This will overwrite your current active database with the backup data.</span>',
+      async () => {
+        showToast('Restoring database backup…', 'info');
+        const res = await window.api.importBackupZip();
+        if (res?.success) {
+          showToast('🎉 Database restored successfully!', 'success');
+          setTimeout(() => renderSettings(), 300);
+        } else if (res?.reason !== 'canceled') {
+          showToast('Restore failed: ' + (res?.reason || 'Invalid backup'), 'error');
+        }
+      },
+      true
+    );
   });
 
   // Populate currency dropdown
