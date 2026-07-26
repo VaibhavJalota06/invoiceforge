@@ -246,6 +246,13 @@ ipcMain.handle('get-client-full-profile', (_e, id) => { assertUnlocked(); return
 ipcMain.handle('save-client', (_e, data) => { assertUnlocked(); return db.saveClient(data); });
 ipcMain.handle('delete-client', (_e, id) => { assertUnlocked(); return db.deleteClient(id); });
 
+// ─── Vendors ───────────────────────────────────────────────────────────────────
+ipcMain.handle('get-vendors', () => { assertUnlocked(); return db.getAllVendors(); });
+ipcMain.handle('get-vendor', (_e, id) => { assertUnlocked(); return db.getVendor(id); });
+ipcMain.handle('get-vendor-full-profile', (_e, id) => { assertUnlocked(); return db.getVendorFullProfile(id); });
+ipcMain.handle('save-vendor', (_e, data) => { assertUnlocked(); return db.saveVendor(data); });
+ipcMain.handle('delete-vendor', (_e, id) => { assertUnlocked(); return db.deleteVendor(id); });
+
 // ─── Products & Stock Management ───────────────────────────────────────────────
 ipcMain.handle('get-products', () => {
   assertUnlocked();
@@ -273,6 +280,14 @@ ipcMain.handle('save-invoice', (_e, data) => {
   return db.saveInvoiceAndReturn(data);
 });
 ipcMain.handle('get-dashboard-stats', () => { assertUnlocked(); return db.getDashboardStats(); });
+
+// ─── Purchases & Purchase Orders ──────────────────────────────────────────────
+ipcMain.handle('get-purchases', (_e, filters) => { assertUnlocked(); return db.getAllPurchases(filters); });
+ipcMain.handle('get-purchase', (_e, id) => { assertUnlocked(); return db.getPurchase(id); });
+ipcMain.handle('get-next-purchase-number', () => { assertUnlocked(); return db.getNextPurchaseNumberObj(); });
+ipcMain.handle('save-purchase', (_e, data) => { assertUnlocked(); return db.savePurchase(data); });
+ipcMain.handle('delete-purchase', (_e, id) => { assertUnlocked(); return db.deletePurchase(id); });
+ipcMain.handle('update-purchase-status', (_e, id, status) => { assertUnlocked(); return db.updatePurchaseStatus(id, status); });
 
 // ─── PDF Export ────────────────────────────────────────────────────────────────
 ipcMain.handle('export-pdf', async (_e, htmlContent, defaultFilename) => {

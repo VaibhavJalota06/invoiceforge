@@ -7,6 +7,8 @@ const PAGES = {
   dashboard: () => renderDashboard(),
   invoices:  () => renderInvoices(),
   clients:   () => renderClients(),
+  purchases: () => renderPurchases(),
+  vendors:   () => renderVendors(),
   stock:     () => renderStock(),
   reports:   () => renderReports(),
   settings:  () => renderSettings()
@@ -27,6 +29,8 @@ function navigate(page, params = {}) {
     PAGES[page](params);
   } else if (page === 'invoice-editor') {
     openInvoiceEditor(params.id || null);
+  } else if (page === 'purchase-editor') {
+    openPurchaseEditor(params.id || null, params);
   } else {
     content.innerHTML = '<p style="color:var(--text-3)">Page not found.</p>';
   }

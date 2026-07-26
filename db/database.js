@@ -112,6 +112,47 @@ function createSchema() {
       notes TEXT DEFAULT '',
       reversed INTEGER DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS vendors (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      company_name TEXT DEFAULT '',
+      address TEXT DEFAULT '',
+      email TEXT DEFAULT '',
+      phone TEXT DEFAULT '',
+      gstin TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS purchases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_number TEXT NOT NULL UNIQUE,
+      vendor_id INTEGER REFERENCES vendors(id) ON DELETE SET NULL,
+      vendor_snapshot TEXT DEFAULT '{}',
+      purchase_date TEXT NOT NULL,
+      due_date TEXT DEFAULT '',
+      currency TEXT DEFAULT 'INR',
+      subtotal REAL DEFAULT 0,
+      discount_type TEXT DEFAULT 'flat',
+      discount_value REAL DEFAULT 0,
+      discount_amount REAL DEFAULT 0,
+      tax_lines TEXT DEFAULT '[]',
+      tax_amount REAL DEFAULT 0,
+      grand_total REAL DEFAULT 0,
+      notes TEXT DEFAULT '',
+      status TEXT DEFAULT 'received',
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS purchase_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      purchase_id INTEGER NOT NULL REFERENCES purchases(id) ON DELETE CASCADE,
+      product_id INTEGER DEFAULT 0,
+      description TEXT DEFAULT '',
+      unit TEXT DEFAULT 'Pcs',
+      quantity REAL DEFAULT 1,
+      cost_price REAL DEFAULT 0,
+      amount REAL DEFAULT 0,
+      sort_order INTEGER DEFAULT 0
     )`
   ];
 
@@ -130,6 +171,8 @@ function createSchema() {
     `ALTER TABLE settings ADD COLUMN admin_pin TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN machine_guid TEXT DEFAULT ''`,
     `ALTER TABLE settings ADD COLUMN last_installed_version TEXT DEFAULT ''`,
+    `ALTER TABLE settings ADD COLUMN purchase_prefix TEXT DEFAULT 'PUR-2026-'`,
+    `ALTER TABLE settings ADD COLUMN purchase_counter INTEGER DEFAULT 1`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
     `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
     `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`
@@ -1260,6 +1303,327 @@ function importMonthlyDataPackage(packagePathOrBuffer) {
   };
 }
 
+// ── Vendors ───────────────────────────────────────────────────────────────────
+function getAllVendors() {
+  const rows = db.prepare('SELECT * FROM vendors ORDER BY name COLLATE NOCASE').all();
+  return rows.map(r => ({ ...r, id: Number(r.id) }));
+}
+
+function getVendor(id) {
+  if (!id) return null;
+  const row = db.prepare('SELECT * FROM vendors WHERE id = ?').get(Number(id));
+  return row ? { ...row, id: Number(row.id) } : null;
+}
+
+function saveVendor(data) {
+  const row = {
+    name: String(data.name || '').trim(),
+    company_name: String(data.company_name || '').trim(),
+    address: String(data.address || data.billing_address || '').trim(),
+    email: String(data.email || '').trim(),
+    phone: String(data.phone || '').trim(),
+    gstin: String(data.gstin || '').trim()
+  };
+  if (!row.name) throw new Error('Vendor name is required');
+  let savedVendor;
+  if (data.id) {
+    const id = Number(data.id);
+    db.prepare(`
+      UPDATE vendors SET name=@name, company_name=@company_name,
+        address=@address, email=@email, phone=@phone, gstin=@gstin
+      WHERE id=@id
+    `).run({ ...row, id });
+    savedVendor = getVendor(id);
+  } else {
+    const result = db.prepare(`
+      INSERT INTO vendors (name, company_name, address, email, phone, gstin)
+      VALUES (@name, @company_name, @address, @email, @phone, @gstin)
+    `).run(row);
+    const newId = Number(result.lastInsertRowid);
+    savedVendor = getVendor(newId);
+  }
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return savedVendor;
+}
+
+function deleteVendor(id) {
+  const numId = Number(id);
+  if (!numId) return false;
+  db.prepare('DELETE FROM vendors WHERE id = ?').run(numId);
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return true;
+}
+
+function getVendorFullProfile(vendorId) {
+  const vendor = getVendor(vendorId);
+  if (!vendor) return null;
+
+  const purchases = db.prepare(`
+    SELECT id, purchase_number, purchase_date, due_date, currency, grand_total, status, notes
+    FROM purchases
+    WHERE vendor_id = ?
+    ORDER BY id DESC
+  `).all(vendorId);
+
+  let totalPurchased = 0;
+  let outstandingPayable = 0;
+  let paidCount = 0;
+
+  purchases.forEach(p => {
+    const total = Number(p.grand_total) || 0;
+    totalPurchased += total;
+    if (p.status === 'paid') paidCount++;
+    else if (p.status === 'received' || p.status === 'pending') {
+      outstandingPayable += total;
+    }
+  });
+
+  return {
+    vendor,
+    purchases,
+    stats: {
+      totalPurchased,
+      outstandingPayable,
+      purchaseCount: purchases.length,
+      paidCount
+    }
+  };
+}
+
+// ── Purchases & Purchase Orders ──────────────────────────────────────────────
+function getAllPurchases(filters) {
+  let query = `
+    SELECT p.*, v.name AS vendor_name, v.company_name AS vendor_company
+    FROM purchases p LEFT JOIN vendors v ON p.vendor_id = v.id
+  `;
+  const params = [];
+  const where = [];
+
+  if (filters) {
+    if (filters.status) { where.push("p.status = ?"); params.push(filters.status); }
+    if (filters.vendor_id) { where.push("p.vendor_id = ?"); params.push(filters.vendor_id); }
+    if (filters.date_from) { where.push("p.purchase_date >= ?"); params.push(filters.date_from); }
+    if (filters.date_to) { where.push("p.purchase_date <= ?"); params.push(filters.date_to); }
+    if (filters.currency) { where.push("p.currency = ?"); params.push(filters.currency); }
+  }
+  if (where.length) query += ' WHERE ' + where.join(' AND ');
+  query += ' ORDER BY p.created_at DESC';
+
+  return db.prepare(query).all(...params);
+}
+
+function getPurchase(id) {
+  const p = db.prepare(`
+    SELECT p.*, v.name AS vendor_name, v.company_name AS vendor_company,
+           v.address AS vendor_address, v.email AS vendor_email,
+           v.phone AS vendor_phone, v.gstin AS vendor_gstin
+    FROM purchases p LEFT JOIN vendors v ON p.vendor_id = v.id
+    WHERE p.id = ?
+  `).get(Number(id));
+  if (p) {
+    p.items = db.prepare('SELECT * FROM purchase_items WHERE purchase_id = ? ORDER BY sort_order').all(Number(id));
+    try { p.tax_lines = JSON.parse(p.tax_lines || '[]'); } catch { p.tax_lines = []; }
+    try { p.vendor_snapshot = JSON.parse(p.vendor_snapshot || '{}'); } catch { p.vendor_snapshot = {}; }
+  }
+  return p;
+}
+
+function getNextPurchaseNumberObj() {
+  const s = getSettings();
+  const counter = s.purchase_counter || 1;
+  const num = String(counter).padStart(3, '0');
+  const prefix = s.purchase_prefix || 'PUR-2026-';
+  const purchaseNumber = `${prefix}${num}`;
+  return { purchaseNumber, nextCounter: counter };
+}
+
+function addStockForPurchase(purchaseId, items = null, vendorId = 0) {
+  if (!items || !items.length) {
+    const p = getPurchase(purchaseId);
+    if (!p) return;
+    items = p.items || [];
+    vendorId = vendorId || p.vendor_id || 0;
+  }
+  if (!items || !items.length) return;
+
+  items.forEach(item => {
+    let p = null;
+    if (item.product_id) {
+      p = getProduct(item.product_id);
+    }
+    if (!p && item.description && typeof item.description === 'string' && item.description.trim()) {
+      p = db.prepare(`SELECT * FROM products WHERE LOWER(name) = LOWER(?)`).get(item.description.trim());
+    }
+    if (p) {
+      const qty = Math.abs(Number(item.quantity)) || 1;
+      const cost = Number(item.cost_price) || 0;
+
+      recordStockTransaction({
+        product_id: p.id,
+        type: 'IN',
+        quantity: qty,
+        reference_type: 'PURCHASE',
+        reference_id: purchaseId,
+        client_id: 0,
+        notes: `Purchase Restock for Order #${purchaseId}`
+      });
+
+      if (cost > 0) {
+        db.prepare('UPDATE products SET cost_price = ? WHERE id = ?').run(cost, p.id);
+      }
+    }
+  });
+}
+
+function restoreStockForPurchase(purchaseId) {
+  const txs = db.prepare(`SELECT * FROM stock_transactions WHERE reference_type = 'PURCHASE' AND reference_id = ? AND type = 'IN' AND reversed = 0`).all(purchaseId);
+  txs.forEach(tx => {
+    recordStockTransaction({
+      product_id: tx.product_id,
+      type: 'OUT',
+      quantity: tx.quantity,
+      reference_type: 'PURCHASE_CANCEL',
+      reference_id: purchaseId,
+      client_id: 0,
+      notes: `Reverted stock from cancelled/deleted Purchase #${purchaseId}`
+    });
+    db.prepare('UPDATE stock_transactions SET reversed = 1 WHERE id = ?').run(tx.id);
+  });
+}
+
+function savePurchase(data) {
+  const items = data.items || [];
+  const pur = {
+    id:              data.id ? Number(data.id) : null,
+    purchase_number: String(data.purchase_number || '').trim(),
+    vendor_id:       data.vendor_id ? Number(data.vendor_id) : null,
+    purchase_date:   data.purchase_date || new Date().toISOString().slice(0, 10),
+    due_date:        data.due_date || '',
+    currency:        data.currency || 'INR',
+    subtotal:        Number(data.subtotal) || 0,
+    discount_type:   data.discount_type || 'flat',
+    discount_value:  Number(data.discount_value) || 0,
+    discount_amount: Number(data.discount_amount) || 0,
+    tax_lines:       typeof data.tax_lines === 'string' ? data.tax_lines : JSON.stringify(data.tax_lines || []),
+    tax_amount:      Number(data.tax_amount) || 0,
+    grand_total:     Number(data.grand_total) || 0,
+    notes:           String(data.notes || '').trim(),
+    status:          data.status || 'received'
+  };
+
+  const vendor = pur.vendor_id ? getVendor(pur.vendor_id) : null;
+  if (vendor) {
+    pur.vendor_snapshot = JSON.stringify({
+      name: vendor.name,
+      company_name: vendor.company_name,
+      address: vendor.address,
+      email: vendor.email,
+      phone: vendor.phone,
+      gstin: vendor.gstin
+    });
+  } else if (pur.id) {
+    pur.vendor_snapshot = db.prepare('SELECT vendor_snapshot FROM purchases WHERE id = ?').get(pur.id)?.vendor_snapshot || '{}';
+  } else {
+    pur.vendor_snapshot = '{}';
+  }
+
+  const saveItems = db.transaction((purchaseId, rows) => {
+    db.prepare('DELETE FROM purchase_items WHERE purchase_id = ?').run(purchaseId);
+    const stmt = db.prepare(`
+      INSERT INTO purchase_items (purchase_id, product_id, description, unit, quantity, cost_price, amount, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    rows.forEach((item, i) => stmt.run(
+      purchaseId,
+      Number(item.product_id) || 0,
+      item.description || '',
+      item.unit || 'Pcs',
+      item.quantity || 1,
+      item.cost_price || item.rate || 0,
+      item.amount || 0,
+      i
+    ));
+  });
+
+  let savedId;
+  let oldStatus = null;
+  if (pur.id) {
+    oldStatus = db.prepare('SELECT status FROM purchases WHERE id = ?').get(pur.id)?.status;
+    pur.updated_at = new Date().toISOString();
+    db.prepare(`
+      UPDATE purchases SET purchase_number=@purchase_number, vendor_id=@vendor_id, vendor_snapshot=@vendor_snapshot,
+        purchase_date=@purchase_date, due_date=@due_date, currency=@currency,
+        subtotal=@subtotal, discount_type=@discount_type, discount_value=@discount_value,
+        discount_amount=@discount_amount, tax_lines=@tax_lines, tax_amount=@tax_amount,
+        grand_total=@grand_total, notes=@notes, status=@status, updated_at=@updated_at
+      WHERE id=@id
+    `).run(pur);
+    saveItems(pur.id, items);
+    savedId = pur.id;
+
+    const isNowReceived = pur.status === 'received' || pur.status === 'paid';
+    const wasReceived = oldStatus === 'received' || oldStatus === 'paid';
+    if (isNowReceived && !wasReceived) {
+      addStockForPurchase(savedId, items, pur.vendor_id);
+    } else if (!isNowReceived && wasReceived) {
+      restoreStockForPurchase(savedId);
+    }
+  } else {
+    delete pur.id;
+    const result = db.prepare(`
+      INSERT INTO purchases (purchase_number, vendor_id, vendor_snapshot, purchase_date, due_date, currency,
+        subtotal, discount_type, discount_value, discount_amount, tax_lines, tax_amount,
+        grand_total, notes, status)
+      VALUES (@purchase_number, @vendor_id, @vendor_snapshot, @purchase_date, @due_date, @currency,
+        @subtotal, @discount_type, @discount_value, @discount_amount, @tax_lines,
+        @tax_amount, @grand_total, @notes, @status)
+    `).run(pur);
+    savedId = Number(result.lastInsertRowid);
+    saveItems(savedId, items);
+
+    const s = getSettings();
+    const currCounter = s.purchase_counter || 1;
+    db.prepare('UPDATE settings SET purchase_counter = ? WHERE id = 1').run(currCounter + 1);
+
+    if (pur.status === 'received' || pur.status === 'paid') {
+      addStockForPurchase(savedId, items, pur.vendor_id);
+    }
+  }
+
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return getPurchase(savedId);
+}
+
+function deletePurchase(id) {
+  const pId = Number(id);
+  if (!pId) return false;
+  restoreStockForPurchase(pId);
+  db.prepare('DELETE FROM purchases WHERE id = ?').run(pId);
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return true;
+}
+
+function updatePurchaseStatus(id, newStatus) {
+  const pId = Number(id);
+  const p = getPurchase(pId);
+  if (!p) return false;
+
+  const oldStatus = p.status;
+  db.prepare('UPDATE purchases SET status = ?, updated_at = ? WHERE id = ?').run(newStatus, new Date().toISOString(), pId);
+
+  const isNowReceived = newStatus === 'received' || newStatus === 'paid';
+  const wasReceived = oldStatus === 'received' || oldStatus === 'paid';
+
+  if (isNowReceived && !wasReceived) {
+    addStockForPurchase(pId, p.items, p.vendor_id);
+  } else if (!isNowReceived && wasReceived) {
+    restoreStockForPurchase(pId);
+  }
+
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return true;
+}
+
 function closeDatabase() {
   if (db) {
     try {
@@ -1276,11 +1640,13 @@ module.exports = {
   initDatabase, getDbPath, closeDatabase,
   getSettings, saveSettings, verifyAdminPin, saveSecuritySettings, checkPostUpdateNotification,
   getAllClients, getClient, saveClient, deleteClient, getClientProfile, getClientFullProfile,
+  getAllVendors, getVendor, saveVendor, deleteVendor, getVendorFullProfile,
   getAllInvoices, getInvoice, getNextInvoiceNumber, getNextInvoiceNumberObj,
   saveInvoice, saveInvoiceAndReturn, deleteInvoice, duplicateInvoice,
   updateInvoiceStatus, getDashboardStats,
+  getAllPurchases, getPurchase, getNextPurchaseNumberObj, savePurchase, deletePurchase, updatePurchaseStatus,
   getAllProducts, getProduct, saveProduct, deleteProduct, recordStockTransaction, getStockTransactions,
-  deductStockForInvoice, restoreStockForInvoice,
+  deductStockForInvoice, restoreStockForInvoice, addStockForPurchase, restoreStockForPurchase,
   getFinancialReportData, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
   exportMonthlyDataPackage, importMonthlyDataPackage
 };

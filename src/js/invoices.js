@@ -270,7 +270,8 @@ async function shareInvoiceViaEmail(invoiceId) {
     const inv = await window.api.getInvoice(invoiceId);
     if (!inv) { showToast('Invoice not found', 'error'); return; }
     const settings = (await window.api.getSettings()) || {};
-    const text = generateInvoiceShareText(inv, settings, { name: inv.client_name });
+    const rawText = generateInvoiceShareText(inv, settings, { name: inv.client_name });
+    const text = rawText.replace(/\*/g, '');
     const subject = `Invoice #${inv.invoice_number || ''} from ${settings.company_name || 'InvoiceForge'}`;
 
     const res = await window.api.shareInvoiceEmail({

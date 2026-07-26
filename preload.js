@@ -17,6 +17,13 @@ contextBridge.exposeInMainWorld('api', {
   saveClient: (client) => ipcRenderer.invoke('save-client', client),
   deleteClient: (id) => ipcRenderer.invoke('delete-client', id),
 
+  // Vendors
+  getVendors: () => ipcRenderer.invoke('get-vendors'),
+  getVendor: (id) => ipcRenderer.invoke('get-vendor', id),
+  getVendorFullProfile: (id) => ipcRenderer.invoke('get-vendor-full-profile', id),
+  saveVendor: (vendor) => ipcRenderer.invoke('save-vendor', vendor),
+  deleteVendor: (id) => ipcRenderer.invoke('delete-vendor', id),
+
   // Products & Stock Management
   getProducts: () => ipcRenderer.invoke('get-products'),
   getProduct: (id) => ipcRenderer.invoke('get-product', id),
@@ -34,6 +41,14 @@ contextBridge.exposeInMainWorld('api', {
   updateInvoiceStatus: (id, status) => ipcRenderer.invoke('update-invoice-status', id, status),
   getNextInvoiceNumber: () => ipcRenderer.invoke('get-next-invoice-number'),
   getDashboardStats: () => ipcRenderer.invoke('get-dashboard-stats'),
+
+  // Purchases & Purchase Orders
+  getPurchases: (filters) => ipcRenderer.invoke('get-purchases', filters),
+  getPurchase: (id) => ipcRenderer.invoke('get-purchase', id),
+  getNextPurchaseNumber: () => ipcRenderer.invoke('get-next-purchase-number'),
+  savePurchase: (purchase) => ipcRenderer.invoke('save-purchase', purchase),
+  deletePurchase: (id) => ipcRenderer.invoke('delete-purchase', id),
+  updatePurchaseStatus: (id, status) => ipcRenderer.invoke('update-purchase-status', id, status),
 
   // PDF / Print
   exportPdf: (htmlContent, defaultFilename) => ipcRenderer.invoke('export-pdf', htmlContent, defaultFilename),
