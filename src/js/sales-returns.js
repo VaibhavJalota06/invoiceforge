@@ -28,8 +28,9 @@ async function renderSalesReturns() {
   const returns = _returnsState.returns;
   const totalCount = returns.length;
   const totalAmount = returns.reduce((sum, r) => sum + (Number(r.grand_total) || 0), 0);
-  const creditNotesCount = returns.filter(r => r.refund_status === 'credit_note').length;
-  const refundedCount = returns.filter(r => r.refund_status === 'refunded').lengt  content.innerHTML = `
+  const refundedCount = returns.filter(r => r.refund_status === 'refunded').length;
+
+  content.innerHTML = `
     <div class="page-header">
       <div>
         <h1 class="page-title">Sales Returns &amp; Credit Notes</h1>
