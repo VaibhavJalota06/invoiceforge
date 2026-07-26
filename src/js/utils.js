@@ -386,3 +386,13 @@ function showConfirm(title, message, onConfirm, danger = true) {
 function confirmDialog(message, onYes, danger = false) {
   showConfirm('Confirm', message, onYes, danger);
 }
+
+// ── Global Exports for inline HTML handlers ───────────────────────────────────
+window.showToast = showToast;
+window.showModal = showModal;
+window.closeModal = closeModal;
+window.showConfirm = showConfirm;
+window.confirmDialog = confirmDialog;
+window.formatDate = formatDate;
+window.formatCurrency = formatCurrency;
+window.escHtml = escHtml;

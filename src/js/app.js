@@ -196,9 +196,18 @@ async function checkPostUpdateNotificationOnLaunch() {
               Your software has been updated to <strong>Version ${res.currentVersion || '1.0.4'}</strong>.<br/>
               All your client accounts, billed invoices, corporate settings, and database records have been <strong>safely preserved</strong>.
             </p>
-            <button class="btn btn-primary" style="padding:10px 24px;font-size:14px" onclick="closeModal()">Continue to Dashboard</button>
+            <button class="btn btn-primary" id="btn-update-continue" style="padding:10px 24px;font-size:14px">Continue to Dashboard</button>
           </div>
         `);
+        setTimeout(() => {
+          const btn = document.getElementById('btn-update-continue');
+          if (btn) {
+            btn.addEventListener('click', () => {
+              if (typeof closeModal === 'function') closeModal();
+              if (typeof navigate === 'function') navigate('dashboard');
+            });
+          }
+        }, 50);
       }
     }
   } catch (err) {
