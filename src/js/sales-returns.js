@@ -39,9 +39,10 @@ async function renderSalesReturns() {
     _returnsState.invoices = [];
   }
 
-  const returns = _returnsState.returns;
+  const returns = _returnsState.returns || [];
   const totalCount = returns.length;
   const totalAmount = returns.reduce((sum, r) => sum + (Number(r.grand_total) || 0), 0);
+  const creditNotesCount = returns.filter(r => r.refund_status === 'credit_note').length;
   const refundedCount = returns.filter(r => r.refund_status === 'refunded').length;
 
   content.innerHTML = `
