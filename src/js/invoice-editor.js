@@ -485,3 +485,4 @@ async function _onInlineClientSaved(saved) {
   }
 }
 window._onInlineClientSaved = _onInlineClientSaved;
+window.openInvoiceEditor = openInvoiceEditor;

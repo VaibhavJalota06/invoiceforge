@@ -48,7 +48,8 @@ if (newInvoiceBtn) {
   });
 }
 
-// ── Also expose as window.appNavigate for my new invoices.js ─────────────────
+// ── Also expose as window.navigate and window.appNavigate ─────────────────
+window.navigate = navigate;
 window.appNavigate = navigate;
 
 // ── Auto-Updater Listener ──────────────────────────────────────────────────────
