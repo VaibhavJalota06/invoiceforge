@@ -378,8 +378,7 @@ async function openClientProfile(clientId) {
 
     const closeAndCreateInv = () => {
       closeModal();
-      navigate('invoices');
-      setTimeout(() => openInvoiceEditor(null, { clientId: client.id }), 50);
+      createNewInvoice(null, { clientId: client.id });
     };
 
     document.getElementById('profile-create-inv-btn')?.addEventListener('click', closeAndCreateInv);
@@ -393,8 +392,7 @@ async function openClientProfile(clientId) {
     document.querySelectorAll('.btn-profile-view-inv').forEach(btn => {
       btn.addEventListener('click', () => {
         closeModal();
-        navigate('invoices');
-        setTimeout(() => openInvoiceEditor(Number(btn.dataset.id)), 50);
+        createNewInvoice(Number(btn.dataset.id));
       });
     });
 

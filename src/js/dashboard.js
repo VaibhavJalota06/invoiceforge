@@ -20,7 +20,7 @@ async function renderDashboard() {
         <h1 class="page-title">Executive Dashboard</h1>
         <p class="page-subtitle">Real-time enterprise overview &amp; financial metrics</p>
       </div>
-      <button class="btn btn-primary" onclick="navigate('invoices'); setTimeout(()=>openInvoiceEditor(null),50)">
+      <button class="btn btn-primary" onclick="createNewInvoice(null)">
         ${ICONS.plus} New Billed Invoice
       </button>
     </div>
@@ -65,7 +65,7 @@ function _renderRecentList(invoices) {
         </svg>
         <h3>No invoices yet</h3>
         <p>Create your first invoice to get started</p>
-        <button class="btn btn-primary" style="margin-top:8px" onclick="navigate('invoices'); setTimeout(()=>openInvoiceEditor(null),50)">
+        <button class="btn btn-primary" style="margin-top:8px" onclick="createNewInvoice(null)">
           ${ICONS.plus} Create Invoice
         </button>
       </div>`;
@@ -76,7 +76,7 @@ function _renderRecentList(invoices) {
       const c = getCurrency(inv.currency);
       const name = _escHtml(inv.client_name || 'Unknown Client');
       return `
-        <div class="recent-item" onclick="navigate('invoices'); setTimeout(()=>openInvoiceEditor(${inv.id}),50)" title="Open invoice">
+        <div class="recent-item" onclick="createNewInvoice(${inv.id})" title="Open invoice">
           <div class="client-avatar">${name.charAt(0).toUpperCase()}</div>
           <div class="recent-item-info">
             <div class="recent-item-name">${_escHtml(inv.invoice_number)} &nbsp;·&nbsp; ${name}</div>

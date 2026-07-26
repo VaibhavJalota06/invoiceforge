@@ -40,15 +40,25 @@ document.querySelectorAll('.nav-item').forEach(el => {
   });
 });
 
+function createNewInvoice(invoiceId = null, options = {}) {
+  document.querySelectorAll('.nav-item').forEach(el => {
+    el.classList.toggle('active', el.dataset.page === 'invoices');
+  });
+  currentPage = 'invoices';
+  if (typeof openInvoiceEditor === 'function') {
+    openInvoiceEditor(invoiceId, options);
+  }
+}
+
 const newInvoiceBtn = document.getElementById('btn-new-invoice');
 if (newInvoiceBtn) {
   newInvoiceBtn.addEventListener('click', () => {
-    navigate('invoices');
-    setTimeout(() => openInvoiceEditor(null), 50);
+    createNewInvoice(null);
   });
 }
 
-// ── Also expose as window.navigate and window.appNavigate ─────────────────
+// ── Also expose as window.createNewInvoice, window.navigate, and window.appNavigate ─────────────────
+window.createNewInvoice = createNewInvoice;
 window.navigate = navigate;
 window.appNavigate = navigate;
 
