@@ -137,7 +137,8 @@ async function openUserProfileModal() {
 
   openModal({
     title: 'Personalized User Profile & Multi-User Switcher',
-    bodyHtml,
+    body: bodyHtml,
+    bodyHtml: bodyHtml,
     confirmText: 'Save Profile Changes',
     cancelText: 'Close',
     onConfirm: async () => {
@@ -300,7 +301,8 @@ async function openUserEditModal(userId = null) {
 
   openModal({
     title: userId ? 'Edit User Account' : '➕ Create New User Account',
-    bodyHtml,
+    body: bodyHtml,
+    bodyHtml: bodyHtml,
     confirmText: userId ? 'Save User' : 'Create User',
     cancelText: 'Cancel',
     onConfirm: async () => {

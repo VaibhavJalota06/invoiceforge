@@ -330,30 +330,49 @@ function openModal(opts) {
 
   if (!overlay || !box) return { close: () => {} };
 
+  const close = () => {
+    overlay.style.display = 'none';
+    overlay.classList.add('hidden');
+  };
+
   if (titleEl) titleEl.textContent = opts.title || '';
-  if (bodyEl) bodyEl.innerHTML = opts.body || '';
+  if (bodyEl) bodyEl.innerHTML = opts.bodyHtml || opts.body || '';
+
   if (footerEl) {
     if (opts.footerHTML) {
       footerEl.innerHTML = opts.footerHTML;
       footerEl.style.display = 'flex';
+    } else if (opts.confirmText || opts.cancelText) {
+      footerEl.innerHTML = `
+        <button type="button" class="btn btn-secondary" id="modal-cancel-btn">${opts.cancelText || 'Cancel'}</button>
+        <button type="button" class="btn btn-primary" id="modal-confirm-btn">${opts.confirmText || 'Save'}</button>
+      `;
+      footerEl.style.display = 'flex';
+
+      document.getElementById('modal-cancel-btn')?.addEventListener('click', close);
+      document.getElementById('modal-confirm-btn')?.addEventListener('click', async () => {
+        if (opts.onConfirm) {
+          const res = await opts.onConfirm();
+          if (res !== false) close();
+        } else {
+          close();
+        }
+      });
     } else {
       footerEl.innerHTML = '';
       footerEl.style.display = 'none';
     }
   }
+
   box.className = 'modal-box' + (opts.wide ? ' modal-lg' : '') + (opts.full ? ' modal-xl' : '');
-
-  const close = () => {
-    overlay.style.display = 'none';
-    overlay.classList.add('hidden');
-  };
-  if (closeBtn) closeBtn.onclick = close;
-  overlay.onclick = e => { if (e.target === overlay) close(); };
-
   overlay.style.display = 'flex';
   overlay.classList.remove('hidden');
 
+  if (closeBtn) closeBtn.onclick = close;
+  overlay.onclick = e => { if (e.target === overlay) close(); };
+
   if (opts.onOpen) opts.onOpen(bodyEl);
+  window.closeModal = close;
   return { close };
 }
 
