@@ -411,6 +411,14 @@ function confirmDialog(message, onYes, danger = false) {
   showConfirm('Confirm', message, onYes, danger);
 }
 
+function debounce(fn, delay = 300) {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn.apply(this, args), delay);
+  };
+}
+
 // ── Global Exports for inline HTML handlers ───────────────────────────────────
 window.showToast = showToast;
 window.showModal = showModal;
@@ -420,3 +428,5 @@ window.confirmDialog = confirmDialog;
 window.formatDate = formatDate;
 window.formatCurrency = formatCurrency;
 window.escHtml = escHtml;
+window.escapeHtml = escHtml;
+window.debounce = debounce;

@@ -466,7 +466,7 @@ ipcMain.handle('restore-backup-file', async (_e, filePath) => {
     if (!filePath || !fs.existsSync(filePath)) {
       return { success: false, reason: 'Backup file path does not exist' };
     }
-    return db.importMonthlyDataPackage(filePath);
+    return db.restoreDatabaseFromZip(filePath);
   } catch (err) {
     console.error('Drag drop restore error:', err);
     return { success: false, reason: err.message };
@@ -601,3 +601,28 @@ ipcMain.handle('copy-to-clipboard', (_e, text) => {
   clipboard.writeText(String(text || ''));
   return { success: true };
 });
+
+// ─── Expenses IPC ─────────────────────────────────────────────────────────────
+ipcMain.handle('get-expenses', (_e, filters) => { assertUnlocked(); return db.getAllExpenses(filters); });
+ipcMain.handle('get-expense', (_e, id) => { assertUnlocked(); return db.getExpense(id); });
+ipcMain.handle('save-expense', (_e, data) => { assertUnlocked(); return db.saveExpense(data); });
+ipcMain.handle('delete-expense', (_e, id) => { assertUnlocked(); return db.deleteExpense(id); });
+ipcMain.handle('get-expense-categories', () => { assertUnlocked(); return db.getAllExpenseCategories(); });
+ipcMain.handle('save-expense-category', (_e, data) => { assertUnlocked(); return db.saveExpenseCategory(data); });
+ipcMain.handle('delete-expense-category', (_e, id) => { assertUnlocked(); return db.deleteExpenseCategory(id); });
+
+// ─── Quotations IPC ───────────────────────────────────────────────────────────
+ipcMain.handle('get-quotations', (_e, filters) => { assertUnlocked(); return db.getAllQuotations(filters); });
+ipcMain.handle('get-quotation', (_e, id) => { assertUnlocked(); return db.getQuotation(id); });
+ipcMain.handle('get-next-quotation-number', () => { assertUnlocked(); return db.getNextQuotationNumberObj(); });
+ipcMain.handle('save-quotation', (_e, data) => { assertUnlocked(); return db.saveQuotationAndReturn(data); });
+ipcMain.handle('delete-quotation', (_e, id) => { assertUnlocked(); return db.deleteQuotation(id); });
+ipcMain.handle('convert-quotation-to-invoice', (_e, id) => { assertUnlocked(); return db.convertQuotationToInvoice(id); });
+
+// ─── Payments IPC ─────────────────────────────────────────────────────────────
+ipcMain.handle('get-payments', (_e, filters) => { assertUnlocked(); return db.getPaymentRecords(filters); });
+ipcMain.handle('save-payment', (_e, data) => { assertUnlocked(); return db.savePaymentRecord(data); });
+ipcMain.handle('delete-payment', (_e, id) => { assertUnlocked(); return db.deletePaymentRecord(id); });
+ipcMain.handle('get-account-balances', () => { assertUnlocked(); return db.getAccountBalances(); });
+
+

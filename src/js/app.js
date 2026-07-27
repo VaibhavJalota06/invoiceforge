@@ -6,10 +6,13 @@
 const PAGES = {
   dashboard:       () => renderDashboard(),
   invoices:        () => renderInvoices(),
+  quotations:      () => renderQuotations(),
   'sales-returns': () => renderSalesReturns(),
   clients:         () => renderClients(),
   purchases:       () => renderPurchases(),
   vendors:         () => renderVendors(),
+  expenses:        () => renderExpenses(),
+  payments:        () => renderPayments(),
   stock:           () => renderStock(),
   reports:         () => renderReports(),
   settings:        () => renderSettings()
@@ -42,6 +45,8 @@ function navigate(page, params = {}) {
     PAGES[page](params);
   } else if (page === 'invoice-editor') {
     openInvoiceEditor(params.id || null);
+  } else if (page === 'quotation-editor') {
+    openQuotationEditor(params.id || null);
   } else if (page === 'purchase-editor') {
     openPurchaseEditor(params.id || null, params);
   } else {

@@ -90,6 +90,29 @@ contextBridge.exposeInMainWorld('api', {
   shareInvoiceEmail: (payload) => ipcRenderer.invoke('share-invoice-email', payload),
   copyToClipboard: (text) => ipcRenderer.invoke('copy-to-clipboard', text),
 
+  // Operational Expenses
+  getExpenses: (filters) => ipcRenderer.invoke('get-expenses', filters),
+  getExpense: (id) => ipcRenderer.invoke('get-expense', id),
+  saveExpense: (data) => ipcRenderer.invoke('save-expense', data),
+  deleteExpense: (id) => ipcRenderer.invoke('delete-expense', id),
+  getExpenseCategories: () => ipcRenderer.invoke('get-expense-categories'),
+  saveExpenseCategory: (data) => ipcRenderer.invoke('save-expense-category', data),
+  deleteExpenseCategory: (id) => ipcRenderer.invoke('delete-expense-category', id),
+
+  // Quotations & Estimates
+  getQuotations: (filters) => ipcRenderer.invoke('get-quotations', filters),
+  getQuotation: (id) => ipcRenderer.invoke('get-quotation', id),
+  getNextQuotationNumber: () => ipcRenderer.invoke('get-next-quotation-number'),
+  saveQuotation: (data) => ipcRenderer.invoke('save-quotation', data),
+  deleteQuotation: (id) => ipcRenderer.invoke('delete-quotation', id),
+  convertQuotationToInvoice: (id) => ipcRenderer.invoke('convert-quotation-to-invoice', id),
+
+  // Payments & Cash/Bank Register
+  getPayments: (filters) => ipcRenderer.invoke('get-payments', filters),
+  savePayment: (data) => ipcRenderer.invoke('save-payment', data),
+  deletePayment: (id) => ipcRenderer.invoke('delete-payment', id),
+  getAccountBalances: () => ipcRenderer.invoke('get-account-balances'),
+
   // Auto-Updater
   checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
   downloadUpdate: () => ipcRenderer.invoke('download-update'),

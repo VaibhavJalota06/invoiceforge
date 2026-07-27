@@ -174,40 +174,38 @@ function renderOverviewSection(report, fmt, currentYear) {
     </div>
 
     <!-- KPI Financial Summary Cards Grid -->
-    <div class="stats-grid" style="margin-bottom:24px">
+    <div class="stats-grid" style="margin-bottom:24px;grid-template-columns: repeat(4, 1fr);">
       <div class="stat-card">
-        <div class="stat-icon purple">${ICONS.pdf || ''}</div>
         <div class="stat-info">
-          <div class="stat-label">Gross Billed Revenue</div>
+          <div class="stat-label">Gross Revenue</div>
           <div class="stat-value">${fmt(metrics.totalBilled)}</div>
-          <div class="stat-sub">${metrics.totalInvoicesCount} finalized invoice${metrics.totalInvoicesCount !== 1 ? 's' : ''}</div>
+          <div class="stat-sub">${metrics.totalInvoicesCount} finalized invoices</div>
         </div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon green">${ICONS.check || ''}</div>
         <div class="stat-info">
-          <div class="stat-label">Collected Payments</div>
-          <div class="stat-value" style="color:var(--success)">${fmt(metrics.paidAmount)}</div>
-          <div class="stat-sub">Received in full</div>
+          <div class="stat-label">Purchases (COGS)</div>
+          <div class="stat-value" style="color:var(--warning)">-${fmt(metrics.costOfGoodsPurchased || 0)}</div>
+          <div class="stat-sub">Stock purchases</div>
         </div>
       </div>
 
       <div class="stat-card">
-        <div class="stat-icon yellow">${ICONS.edit || ''}</div>
         <div class="stat-info">
-          <div class="stat-label">Total Tax Collected</div>
-          <div class="stat-value" style="color:var(--warning)">${fmt(metrics.taxSum)}</div>
-          <div class="stat-sub">${taxBreakdown.length} tax line category</div>
+          <div class="stat-label">Operating Expenses</div>
+          <div class="stat-value" style="color:var(--danger)">-${fmt(metrics.totalOperatingExpenses || 0)}</div>
+          <div class="stat-sub">Rent, utilities, staff</div>
         </div>
       </div>
 
-      <div class="stat-card">
-        <div class="stat-icon red">${ICONS.trash || ''}</div>
+      <div class="stat-card" style="border-left:3px solid var(--success)">
         <div class="stat-info">
-          <div class="stat-label">Outstanding Receivables</div>
-          <div class="stat-value" style="color:var(--danger)">${fmt(metrics.outstandingAmount)}</div>
-          <div class="stat-sub">Unpaid &amp; Overdue balance</div>
+          <div class="stat-label">Net Operating Profit</div>
+          <div class="stat-value" style="color:${(metrics.netOperatingProfit || 0) >= 0 ? 'var(--success)' : 'var(--danger)'}">
+            ${fmt(metrics.netOperatingProfit || 0)}
+          </div>
+          <div class="stat-sub">Revenue - COGS - Expenses</div>
         </div>
       </div>
     </div>
@@ -260,6 +258,17 @@ function renderOverviewSection(report, fmt, currentYear) {
 
       <!-- Right Side Column -->
       <div style="display:flex;flex-direction:column;gap:18px">
+        <!-- Aging Receivables & Payables Breakdown -->
+        <div class="card">
+          <div class="form-section-title" style="margin-bottom:12px">Accounts Receivable Aging</div>
+          <div style="font-size:12px;display:flex;flex-direction:column;gap:6px">
+            <div style="display:flex;justify-content:space-between"><span>Current (0-30 Days):</span> <strong>${fmt(report.arAging?.current || 0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>31–60 Days Overdue:</span> <strong style="color:var(--warning)">${fmt(report.arAging?.days30 || 0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>61–90 Days Overdue:</span> <strong style="color:var(--danger)">${fmt(report.arAging?.days60 || 0)}</strong></div>
+            <div style="display:flex;justify-content:space-between"><span>90+ Days Overdue:</span> <strong style="color:var(--danger)">${fmt(report.arAging?.days90Plus || 0)}</strong></div>
+          </div>
+        </div>
+
         <div class="card">
           <div class="form-section-title" style="margin-bottom:12px">GST Tax Liabilities</div>
           ${taxBreakdown.length === 0 ? `

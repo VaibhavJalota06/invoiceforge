@@ -23,6 +23,7 @@ function initDatabase() {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   createSchema();
+  seedDemoDataIfEmpty();
   return db;
 }
 
@@ -176,14 +177,21 @@ function createSchema() {
     `ALTER TABLE settings ADD COLUMN active_user_id INTEGER DEFAULT 1`,
     `ALTER TABLE invoices ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))`,
     `ALTER TABLE invoices ADD COLUMN client_name TEXT DEFAULT ''`,
+    `ALTER TABLE invoices ADD COLUMN discount_type TEXT DEFAULT 'flat'`,
+    `ALTER TABLE invoices ADD COLUMN discount_value REAL DEFAULT 0`,
+    `ALTER TABLE invoices ADD COLUMN discount_amount REAL DEFAULT 0`,
+    `ALTER TABLE invoices ADD COLUMN tax_lines TEXT DEFAULT '[]'`,
+    `ALTER TABLE invoices ADD COLUMN tax_amount REAL DEFAULT 0`,
     `ALTER TABLE purchases ADD COLUMN updated_at TEXT DEFAULT (datetime('now'))`,
     `ALTER TABLE purchases ADD COLUMN vendor_name TEXT DEFAULT ''`,
     `ALTER TABLE clients ADD COLUMN company_name TEXT DEFAULT ''`,
     `ALTER TABLE clients ADD COLUMN address TEXT DEFAULT ''`,
+    `ALTER TABLE clients ADD COLUMN billing_address TEXT DEFAULT ''`,
     `ALTER TABLE vendors ADD COLUMN company_name TEXT DEFAULT ''`,
     `ALTER TABLE vendors ADD COLUMN address TEXT DEFAULT ''`,
     `ALTER TABLE invoice_items ADD COLUMN product_id INTEGER DEFAULT 0`,
     `ALTER TABLE invoice_items ADD COLUMN unit TEXT DEFAULT 'Pcs'`,
+    `ALTER TABLE invoice_items ADD COLUMN sort_order INTEGER DEFAULT 0`,
     `ALTER TABLE stock_transactions ADD COLUMN reversed INTEGER DEFAULT 0`,
     `ALTER TABLE settings ADD COLUMN return_prefix TEXT DEFAULT 'RET-2026-'`,
     `ALTER TABLE settings ADD COLUMN return_counter INTEGER DEFAULT 1`,
@@ -224,7 +232,78 @@ function createSchema() {
       created_at TEXT DEFAULT (datetime('now')),
       last_login TEXT DEFAULT ''
     )`,
-    `INSERT OR IGNORE INTO users (id, name, email, role, pin, avatar_color) VALUES (1, 'Administrator', 'admin@invoiceforge.local', 'Admin', '', '#6366f1')`
+    `INSERT OR IGNORE INTO users (id, name, email, role, pin, avatar_color) VALUES (1, 'Administrator', 'admin@invoiceforge.local', 'Admin', '', '#6366f1')`,
+    `ALTER TABLE settings ADD COLUMN quotation_prefix TEXT DEFAULT 'QTN-2026-'`,
+    `ALTER TABLE settings ADD COLUMN quotation_counter INTEGER DEFAULT 1`,
+    `CREATE TABLE IF NOT EXISTS expense_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      description TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER REFERENCES expense_categories(id) ON DELETE SET NULL,
+      title TEXT NOT NULL,
+      amount REAL NOT NULL DEFAULT 0,
+      payment_method TEXT DEFAULT 'Cash',
+      expense_date TEXT NOT NULL,
+      receipt_path TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS quotations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quotation_number TEXT NOT NULL UNIQUE,
+      client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
+      client_snapshot TEXT DEFAULT '{}',
+      quotation_date TEXT NOT NULL,
+      valid_until TEXT DEFAULT '',
+      currency TEXT DEFAULT 'INR',
+      subtotal REAL DEFAULT 0,
+      discount_type TEXT DEFAULT 'flat',
+      discount_value REAL DEFAULT 0,
+      discount_amount REAL DEFAULT 0,
+      tax_lines TEXT DEFAULT '[]',
+      tax_amount REAL DEFAULT 0,
+      grand_total REAL DEFAULT 0,
+      notes TEXT DEFAULT '',
+      status TEXT DEFAULT 'draft',
+      converted_invoice_id INTEGER DEFAULT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS quotation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      quotation_id INTEGER NOT NULL REFERENCES quotations(id) ON DELETE CASCADE,
+      product_id INTEGER DEFAULT 0,
+      description TEXT DEFAULT '',
+      unit TEXT DEFAULT 'Pcs',
+      quantity REAL DEFAULT 1,
+      rate REAL DEFAULT 0,
+      amount REAL DEFAULT 0,
+      sort_order INTEGER DEFAULT 0
+    )`,
+    `CREATE TABLE IF NOT EXISTS payment_records (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      type TEXT NOT NULL,
+      account_type TEXT DEFAULT 'Cash',
+      party_type TEXT DEFAULT 'client',
+      party_id INTEGER DEFAULT 0,
+      invoice_id INTEGER DEFAULT 0,
+      purchase_id INTEGER DEFAULT 0,
+      amount REAL NOT NULL DEFAULT 0,
+      payment_date TEXT NOT NULL,
+      reference_no TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (1, 'Office Rent', 'Monthly facility & office lease payments')`,
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (2, 'Utilities & Electricity', 'Electricity, water, internet, phone bills')`,
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (3, 'Staff Salaries', 'Employee compensation and payroll')`,
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (4, 'Software & Subscriptions', 'SaaS, hosting, IT tools')`,
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (5, 'Travel & Transport', 'Logistics, fuel, business travel')`,
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (6, 'Miscellaneous', 'General operational costs')`
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch (e) {} // expected to fail if column already exists
@@ -258,7 +337,9 @@ function saveSettings(data) {
     'company_name','company_address','company_phone','company_email',
     'tax_number','bank_details','default_payment_terms','default_currency',
     'default_tax_rate','invoice_prefix','invoice_counter','invoice_footer','logo_path',
-    'app_lock_enabled','admin_name','admin_pin','machine_guid'
+    'app_lock_enabled','admin_name','admin_pin','machine_guid',
+    'purchase_prefix','purchase_counter','return_prefix','return_counter',
+    'quotation_prefix','quotation_counter'
   ];
   const fields = allowed.filter(c => c in data).map(c => `${c} = @${c}`).join(', ');
   if (!fields) return true;
@@ -741,18 +822,21 @@ function getInvoice(id) {
 }
 
 function getNextInvoiceNumber() {
-  const s = getSettings();
-  const num = String(s.invoice_counter).padStart(3, '0');
-  return `${s.invoice_prefix}${num}`;
+  return getNextInvoiceNumberObj().formatted;
 }
 
-// Returns the object format expected by the pre-existing invoice-editor.js renderer
 function getNextInvoiceNumberObj() {
   const s = getSettings();
-  const counter = s.invoice_counter || 1;
-  const num = String(counter).padStart(3, '0');
-  const invoiceNumber = `${s.invoice_prefix}${num}`;
-  return { invoiceNumber, nextCounter: counter };
+  let counter = s.invoice_counter || 1;
+  const prefix = s.invoice_prefix || 'INV-2026-';
+  let formatted = `${prefix}${String(counter).padStart(3, '0')}`;
+
+  while (db.prepare('SELECT id FROM invoices WHERE invoice_number = ?').get(formatted)) {
+    counter++;
+    formatted = `${prefix}${String(counter).padStart(3, '0')}`;
+  }
+
+  return { invoiceNumber: formatted, formatted, nextCounter: counter };
 }
 
 function saveInvoice(data) {
@@ -1295,6 +1379,68 @@ function getFinancialReportData(filters = {}) {
 
   const clientSummary = Object.values(clientSummaryMap).sort((a, b) => b.totalBilled - a.totalBilled);
 
+  // Operating Expenses calculation for date range
+  const expenseRow = db.prepare(`
+    SELECT COALESCE(SUM(amount), 0) AS total
+    FROM expenses
+    WHERE expense_date >= ? AND expense_date <= ?
+  `).get(dateFrom, dateTo);
+  const totalOperatingExpenses = Number(expenseRow?.total) || 0;
+
+  const expenseCategoryBreakdown = db.prepare(`
+    SELECT COALESCE(c.name, 'Uncategorized') as category_name, COALESCE(SUM(e.amount), 0) as total
+    FROM expenses e
+    LEFT JOIN expense_categories c ON e.category_id = c.id
+    WHERE e.expense_date >= ? AND e.expense_date <= ?
+    GROUP BY c.name
+    ORDER BY total DESC
+  `).all(dateFrom, dateTo);
+
+  const purchasesRow = db.prepare(`
+    SELECT COALESCE(SUM(grand_total), 0) AS total
+    FROM purchases
+    WHERE purchase_date >= ? AND purchase_date <= ? AND status IN ('received', 'paid')
+  `).get(dateFrom, dateTo);
+  const costOfGoodsPurchased = Number(purchasesRow?.total) || 0;
+
+  const grossProfit = totalBilled - costOfGoodsPurchased;
+  const netOperatingProfit = grossProfit - totalOperatingExpenses;
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const unpaidInvoices = db.prepare(`
+    SELECT invoice_date, grand_total
+    FROM invoices
+    WHERE status IN ('sent', 'overdue', 'unpaid')
+  `).all();
+  const arAging = { current: 0, days30: 0, days60: 0, days90Plus: 0, total: 0 };
+  unpaidInvoices.forEach(inv => {
+    const diffTime = Math.abs(new Date(todayStr) - new Date(inv.invoice_date));
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const amt = Number(inv.grand_total) || 0;
+    arAging.total += amt;
+    if (diffDays <= 30) arAging.current += amt;
+    else if (diffDays <= 60) arAging.days30 += amt;
+    else if (diffDays <= 90) arAging.days60 += amt;
+    else arAging.days90Plus += amt;
+  });
+
+  const unpaidPurchases = db.prepare(`
+    SELECT purchase_date, grand_total
+    FROM purchases
+    WHERE status IN ('pending', 'received', 'unpaid')
+  `).all();
+  const apAging = { current: 0, days30: 0, days60: 0, days90Plus: 0, total: 0 };
+  unpaidPurchases.forEach(pur => {
+    const diffTime = Math.abs(new Date(todayStr) - new Date(pur.purchase_date));
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    const amt = Number(pur.grand_total) || 0;
+    apAging.total += amt;
+    if (diffDays <= 30) apAging.current += amt;
+    else if (diffDays <= 60) apAging.days30 += amt;
+    else if (diffDays <= 90) apAging.days60 += amt;
+    else apAging.days90Plus += amt;
+  });
+
   return {
     dateFrom,
     dateTo,
@@ -1306,9 +1452,16 @@ function getFinancialReportData(filters = {}) {
       paidAmount,
       outstandingAmount,
       totalInvoicesCount,
-      draftInvoicesCount
+      draftInvoicesCount,
+      costOfGoodsPurchased,
+      grossProfit,
+      totalOperatingExpenses,
+      netOperatingProfit
     },
     taxBreakdown,
+    expenseCategoryBreakdown,
+    arAging,
+    apAging,
     clients: clientSummary,
     invoices
   };
@@ -2160,12 +2313,436 @@ function updatePurchaseStatus(id, newStatus) {
   return true;
 }
 
+// ── Expense Management CRUD ───────────────────────────────────────────────────
+function getAllExpenseCategories() {
+  return db.prepare('SELECT * FROM expense_categories ORDER BY name ASC').all();
+}
+
+function saveExpenseCategory(data) {
+  const name = String(data.name || '').trim();
+  if (!name) throw new Error('Category name required');
+  const desc = String(data.description || '').trim();
+  if (data.id) {
+    db.prepare('UPDATE expense_categories SET name = ?, description = ? WHERE id = ?').run(name, desc, Number(data.id));
+  } else {
+    db.prepare('INSERT OR IGNORE INTO expense_categories (name, description) VALUES (?, ?)').run(name, desc);
+  }
+  return getAllExpenseCategories();
+}
+
+function deleteExpenseCategory(id) {
+  const catId = Number(id);
+  if (!catId) return false;
+  db.prepare('DELETE FROM expense_categories WHERE id = ?').run(catId);
+  return true;
+}
+
+function getAllExpenses(filters = {}) {
+  let sql = `
+    SELECT e.*, c.name as category_name
+    FROM expenses e
+    LEFT JOIN expense_categories c ON e.category_id = c.id
+    WHERE 1=1
+  `;
+  const params = [];
+  if (filters.search) {
+    sql += ` AND (e.title LIKE ? OR e.notes LIKE ? OR c.name LIKE ?)`;
+    const s = `%${filters.search}%`;
+    params.push(s, s, s);
+  }
+  if (filters.category_id) {
+    sql += ` AND e.category_id = ?`;
+    params.push(Number(filters.category_id));
+  }
+  if (filters.dateFrom) {
+    sql += ` AND e.expense_date >= ?`;
+    params.push(filters.dateFrom);
+  }
+  if (filters.dateTo) {
+    sql += ` AND e.expense_date <= ?`;
+    params.push(filters.dateTo);
+  }
+  sql += ` ORDER BY e.expense_date DESC, e.id DESC`;
+  return db.prepare(sql).all(...params);
+}
+
+function getExpense(id) {
+  const eId = Number(id);
+  if (!eId) return null;
+  return db.prepare(`
+    SELECT e.*, c.name as category_name
+    FROM expenses e
+    LEFT JOIN expense_categories c ON e.category_id = c.id
+    WHERE e.id = ?
+  `).get(eId);
+}
+
+function saveExpense(data) {
+  const title = String(data.title || '').trim();
+  if (!title) throw new Error('Expense title is required');
+  const amount = Number(data.amount) || 0;
+  const category_id = Number(data.category_id) || null;
+  const payment_method = String(data.payment_method || 'Cash').trim();
+  const expense_date = data.expense_date || new Date().toISOString().slice(0, 10);
+  const notes = String(data.notes || '').trim();
+  const receipt_path = String(data.receipt_path || '').trim();
+
+  let savedId;
+  if (data.id) {
+    savedId = Number(data.id);
+    db.prepare(`
+      UPDATE expenses
+      SET category_id = ?, title = ?, amount = ?, payment_method = ?, expense_date = ?, receipt_path = ?, notes = ?
+      WHERE id = ?
+    `).run(category_id, title, amount, payment_method, expense_date, receipt_path, notes, savedId);
+  } else {
+    const res = db.prepare(`
+      INSERT INTO expenses (category_id, title, amount, payment_method, expense_date, receipt_path, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(category_id, title, amount, payment_method, expense_date, receipt_path, notes);
+    savedId = Number(res.lastInsertRowid);
+  }
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return getExpense(savedId);
+}
+
+function deleteExpense(id) {
+  const eId = Number(id);
+  if (!eId) return false;
+  db.prepare('DELETE FROM expenses WHERE id = ?').run(eId);
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return true;
+}
+
+// ── Quotation Management CRUD ─────────────────────────────────────────────────
+function getNextQuotationNumberObj() {
+  const s = getSettings();
+  const prefix = s.quotation_prefix || 'QTN-2026-';
+  const counter = s.quotation_counter || 1;
+  const numStr = String(counter).padStart(3, '0');
+  return { prefix, counter, formatted: `${prefix}${numStr}` };
+}
+
+function getAllQuotations(filters = {}) {
+  let sql = `
+    SELECT q.*, c.name as client_name, c.company_name as client_company
+    FROM quotations q
+    LEFT JOIN clients c ON q.client_id = c.id
+    WHERE 1=1
+  `;
+  const params = [];
+  if (filters.search) {
+    sql += ` AND (q.quotation_number LIKE ? OR c.name LIKE ? OR q.notes LIKE ?)`;
+    const s = `%${filters.search}%`;
+    params.push(s, s, s);
+  }
+  if (filters.status) {
+    sql += ` AND q.status = ?`;
+    params.push(filters.status);
+  }
+  if (filters.client_id) {
+    sql += ` AND q.client_id = ?`;
+    params.push(Number(filters.client_id));
+  }
+  sql += ` ORDER BY q.id DESC`;
+  return db.prepare(sql).all(...params);
+}
+
+function getQuotation(id) {
+  const qId = Number(id);
+  if (!qId) return null;
+  const q = db.prepare(`
+    SELECT q.*, c.name as client_name, c.company_name as client_company, c.email as client_email, c.phone as client_phone, c.gstin as client_gstin
+    FROM quotations q
+    LEFT JOIN clients c ON q.client_id = c.id
+    WHERE q.id = ?
+  `).get(qId);
+  if (!q) return null;
+
+  const items = db.prepare(`SELECT * FROM quotation_items WHERE quotation_id = ? ORDER BY sort_order ASC, id ASC`).all(qId);
+  q.items = items;
+  return q;
+}
+
+function saveQuotationAndReturn(data) {
+  const items = Array.isArray(data.items) ? data.items : [];
+  let validClientId = null;
+  if (data.client_id) {
+    const c = getClient(Number(data.client_id));
+    if (c) validClientId = c.id;
+  }
+
+  const qData = {
+    id: data.id ? Number(data.id) : undefined,
+    quotation_number: String(data.quotation_number || '').trim(),
+    client_id: validClientId,
+    client_snapshot: typeof data.client_snapshot === 'string' ? data.client_snapshot : JSON.stringify(data.client_snapshot || {}),
+    quotation_date: data.quotation_date || new Date().toISOString().slice(0, 10),
+    valid_until: data.valid_until || '',
+    currency: data.currency || 'INR',
+    subtotal: Number(data.subtotal) || 0,
+    discount_type: data.discount_type || 'flat',
+    discount_value: Number(data.discount_value) || 0,
+    discount_amount: Number(data.discount_amount) || 0,
+    tax_lines: typeof data.tax_lines === 'string' ? data.tax_lines : JSON.stringify(data.tax_lines || []),
+    tax_amount: Number(data.tax_amount) || 0,
+    grand_total: Number(data.grand_total) || 0,
+    notes: String(data.notes || '').trim(),
+    status: data.status || 'draft'
+  };
+
+  let savedId;
+  const saveItems = (quotationId, itemsList) => {
+    db.prepare('DELETE FROM quotation_items WHERE quotation_id = ?').run(quotationId);
+    const stmt = db.prepare(`
+      INSERT INTO quotation_items (quotation_id, product_id, description, unit, quantity, rate, amount, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    itemsList.forEach((item, index) => {
+      stmt.run(
+        quotationId,
+        Number(item.product_id) || 0,
+        String(item.description || ''),
+        String(item.unit || 'Pcs'),
+        Number(item.quantity) || 1,
+        Number(item.rate) || 0,
+        Number(item.amount) || 0,
+        index
+      );
+    });
+  };
+
+  if (qData.id) {
+    savedId = qData.id;
+    qData.updated_at = new Date().toISOString();
+    db.prepare(`
+      UPDATE quotations SET
+        quotation_number=@quotation_number, client_id=@client_id, client_snapshot=@client_snapshot,
+        quotation_date=@quotation_date, valid_until=@valid_until, currency=@currency,
+        subtotal=@subtotal, discount_type=@discount_type, discount_value=@discount_value,
+        discount_amount=@discount_amount, tax_lines=@tax_lines, tax_amount=@tax_amount,
+        grand_total=@grand_total, notes=@notes, status=@status, updated_at=@updated_at
+      WHERE id=@id
+    `).run(qData);
+    saveItems(savedId, items);
+  } else {
+    delete qData.id;
+    const result = db.prepare(`
+      INSERT INTO quotations (quotation_number, client_id, client_snapshot, quotation_date, valid_until, currency,
+        subtotal, discount_type, discount_value, discount_amount, tax_lines, tax_amount, grand_total, notes, status)
+      VALUES (@quotation_number, @client_id, @client_snapshot, @quotation_date, @valid_until, @currency,
+        @subtotal, @discount_type, @discount_value, @discount_amount, @tax_lines, @tax_amount, @grand_total, @notes, @status)
+    `).run(qData);
+    savedId = Number(result.lastInsertRowid);
+    saveItems(savedId, items);
+
+    const s = getSettings();
+    const currCounter = s.quotation_counter || 1;
+    db.prepare('UPDATE settings SET quotation_counter = ? WHERE id = 1').run(currCounter + 1);
+  }
+
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return getQuotation(savedId);
+}
+
+function deleteQuotation(id) {
+  const qId = Number(id);
+  if (!qId) return false;
+  db.prepare('DELETE FROM quotations WHERE id = ?').run(qId);
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return true;
+}
+
+function convertQuotationToInvoice(quotationId) {
+  const q = getQuotation(quotationId);
+  if (!q) throw new Error('Quotation not found');
+
+  const nextInv = getNextInvoiceNumberObj();
+  const invoiceData = {
+    invoice_number: nextInv.formatted,
+    client_id: q.client_id,
+    client_snapshot: q.client_snapshot,
+    invoice_date: new Date().toISOString().slice(0, 10),
+    due_date: q.valid_until || '',
+    currency: q.currency,
+    subtotal: q.subtotal,
+    discount_type: q.discount_type,
+    discount_value: q.discount_value,
+    discount_amount: q.discount_amount,
+    tax_lines: q.tax_lines,
+    tax_amount: q.tax_amount,
+    grand_total: q.grand_total,
+    notes: q.notes ? `Converted from Quote #${q.quotation_number}. ${q.notes}` : `Converted from Quote #${q.quotation_number}`,
+    status: 'draft',
+    items: (q.items || []).map(i => ({
+      product_id: i.product_id,
+      description: i.description,
+      unit: i.unit,
+      quantity: i.quantity,
+      rate: i.rate,
+      amount: i.amount
+    }))
+  };
+
+  const newInvoice = saveInvoiceAndReturn(invoiceData);
+  db.prepare("UPDATE quotations SET status = 'converted', converted_invoice_id = ? WHERE id = ?").run(newInvoice.id, q.id);
+  return newInvoice;
+}
+
+// ── Payment Register CRUD ─────────────────────────────────────────────────────
+function getPaymentRecords(filters = {}) {
+  let sql = `
+    SELECT p.*,
+           c.name as client_name,
+           v.name as vendor_name
+    FROM payment_records p
+    LEFT JOIN clients c ON p.party_id = c.id AND p.party_type = 'client'
+    LEFT JOIN vendors v ON p.party_id = v.id AND p.party_type = 'vendor'
+    WHERE 1=1
+  `;
+  const params = [];
+  if (filters.search) {
+    sql += ` AND (p.reference_no LIKE ? OR p.notes LIKE ? OR c.name LIKE ? OR v.name LIKE ?)`;
+    const s = `%${filters.search}%`;
+    params.push(s, s, s, s);
+  }
+  if (filters.type) {
+    sql += ` AND p.type = ?`;
+    params.push(filters.type);
+  }
+  if (filters.account_type) {
+    sql += ` AND p.account_type = ?`;
+    params.push(filters.account_type);
+  }
+  sql += ` ORDER BY p.payment_date DESC, p.id DESC`;
+  return db.prepare(sql).all(...params);
+}
+
+function savePaymentRecord(data) {
+  const type = String(data.type || 'receipt').trim();
+  const account_type = String(data.account_type || 'Cash').trim();
+  const party_type = String(data.party_type || 'client').trim();
+  const party_id = Number(data.party_id) || 0;
+  const invoice_id = Number(data.invoice_id) || 0;
+  const purchase_id = Number(data.purchase_id) || 0;
+  const amount = Number(data.amount) || 0;
+  const payment_date = data.payment_date || new Date().toISOString().slice(0, 10);
+  const reference_no = String(data.reference_no || '').trim();
+  const notes = String(data.notes || '').trim();
+
+  let savedId;
+  if (data.id) {
+    savedId = Number(data.id);
+    db.prepare(`
+      UPDATE payment_records
+      SET type=?, account_type=?, party_type=?, party_id=?, invoice_id=?, purchase_id=?, amount=?, payment_date=?, reference_no=?, notes=?
+      WHERE id=?
+    `).run(type, account_type, party_type, party_id, invoice_id, purchase_id, amount, payment_date, reference_no, notes, savedId);
+  } else {
+    const res = db.prepare(`
+      INSERT INTO payment_records (type, account_type, party_type, party_id, invoice_id, purchase_id, amount, payment_date, reference_no, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(type, account_type, party_type, party_id, invoice_id, purchase_id, amount, payment_date, reference_no, notes);
+    savedId = Number(res.lastInsertRowid);
+  }
+
+  if (invoice_id && type === 'receipt') {
+    const totalPaidRow = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE invoice_id = ? AND type = 'receipt'").get(invoice_id);
+    const invoice = getInvoice(invoice_id);
+    if (invoice && totalPaidRow && totalPaidRow.total >= invoice.grand_total) {
+      db.prepare("UPDATE invoices SET status = 'paid' WHERE id = ?").run(invoice_id);
+    }
+  }
+
+  if (purchase_id && type === 'payment') {
+    const totalPaidRow = db.prepare("SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE purchase_id = ? AND type = 'payment'").get(purchase_id);
+    const purchase = getPurchase(purchase_id);
+    if (purchase && totalPaidRow && totalPaidRow.total >= purchase.grand_total) {
+      db.prepare("UPDATE purchases SET status = 'paid' WHERE id = ?").run(purchase_id);
+    }
+  }
+
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return db.prepare('SELECT * FROM payment_records WHERE id = ?').get(savedId);
+}
+
+function deletePaymentRecord(id) {
+  const pId = Number(id);
+  if (!pId) return false;
+  db.prepare('DELETE FROM payment_records WHERE id = ?').run(pId);
+  try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  return true;
+}
+
+function getAccountBalances() {
+  const cashIn = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE type = 'receipt' AND account_type = 'Cash'`).get().total;
+  const cashOut = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE type = 'payment' AND account_type = 'Cash'`).get().total;
+  const cashExpenses = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE payment_method = 'Cash'`).get().total;
+
+  const bankIn = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE type = 'receipt' AND account_type = 'Bank'`).get().total;
+  const bankOut = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE type = 'payment' AND account_type = 'Bank'`).get().total;
+  const bankExpenses = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE payment_method = 'Bank'`).get().total;
+
+  const upiIn = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE type = 'receipt' AND account_type = 'UPI'`).get().total;
+  const upiOut = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM payment_records WHERE type = 'payment' AND account_type = 'UPI'`).get().total;
+  const upiExpenses = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE payment_method = 'UPI'`).get().total;
+
+  return {
+    cashBalance: cashIn - cashOut - cashExpenses,
+    bankBalance: bankIn - bankOut - bankExpenses,
+    upiBalance: upiIn - upiOut - upiExpenses,
+    totalBalance: (cashIn + bankIn + upiIn) - (cashOut + bankOut + upiOut) - (cashExpenses + bankExpenses + upiExpenses)
+  };
+}
+
+function seedDemoDataIfEmpty() {
+  try {
+    const catCount = db.prepare('SELECT COUNT(*) as cnt FROM expense_categories').get().cnt;
+    if (catCount === 0) {
+      const defaultCategories = [
+        ['Office Rent & Maintenance', 'Premises rental, electricity, water, internet & security'],
+        ['Utilities & Bills', 'Electricity, broadband, telephone & water bills'],
+        ['Staff Salaries & Payroll', 'Employee monthly salaries, bonuses, and allowances'],
+        ['Travel & Conveyance', 'Business travel, cab fares, fuel & lodging costs'],
+        ['Software & Subscriptions', 'SaaS software licenses, cloud servers & tools'],
+        ['Marketing & Advertising', 'Online campaigns, printing, branding & promotional material'],
+        ['General & Miscellaneous', 'Office supplies, tea/coffee, snacks & sundry operational costs']
+      ];
+      for (const [name, description] of defaultCategories) {
+        db.prepare('INSERT OR IGNORE INTO expense_categories (name, description) VALUES (?, ?)').run(name, description);
+      }
+    }
+  } catch (err) {
+    console.error('Error seeding initial expense categories:', err);
+  }
+}
+
+function createDatabaseBackupZip(targetPath) {
+  const fs = require('fs');
+  const dbPath = getDbPath();
+  if (!fs.existsSync(dbPath)) throw new Error('Database file not found');
+  try { if (db) db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+  fs.copyFileSync(dbPath, targetPath);
+  return { success: true, path: targetPath };
+}
+
+function restoreDatabaseFromZip(sourcePath) {
+  const fs = require('fs');
+  const dbPath = getDbPath();
+  if (!fs.existsSync(sourcePath)) throw new Error('Source backup file not found');
+  try {
+    if (db) db.close();
+  } catch (e) {}
+  fs.copyFileSync(sourcePath, dbPath);
+  initDatabase();
+  return { success: true };
+}
+
 function closeDatabase() {
   if (db) {
     try {
-      db.pragma('wal_checkpoint(TRUNCATE)');
       db.close();
-      console.log('Database closed cleanly.');
+      db = null;
     } catch (err) {
       console.error('Error closing database:', err.message);
     }
@@ -2186,5 +2763,8 @@ module.exports = {
   getFinancialReportData, getBalanceSheet, getMonthlyStockReport, generateFinancialCsv, createDatabaseBackupZip, restoreDatabaseFromZip,
   exportMonthlyDataPackage, importMonthlyDataPackage,
   getAllUsers, getUser, getActiveUser, saveUser, deleteUser, switchActiveUser,
-  getAllSalesReturns, getSalesReturns: getAllSalesReturns, getSalesReturn, getNextReturnNumberObj, saveSalesReturn, deleteSalesReturn
+  getAllSalesReturns, getSalesReturns: getAllSalesReturns, getSalesReturn, getNextReturnNumberObj, saveSalesReturn, deleteSalesReturn,
+  getAllExpenses, getExpense, saveExpense, deleteExpense, getAllExpenseCategories, saveExpenseCategory, deleteExpenseCategory,
+  getAllQuotations, getQuotations: getAllQuotations, getQuotation, getNextQuotationNumberObj, saveQuotationAndReturn, deleteQuotation, convertQuotationToInvoice,
+  getPaymentRecords, savePaymentRecord, deletePaymentRecord, getAccountBalances
 };
