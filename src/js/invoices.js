@@ -29,7 +29,10 @@ function _renderInvoiceList(invoices, clients) {
   const rowsHtml = invoices.length === 0 ? '' : invoices.map(inv => `
     <tr data-id="${inv.id}" data-status="${inv.status}" data-client="${inv.client_id || ''}"
         data-date="${inv.invoice_date || ''}" data-search="${(inv.invoice_number + ' ' + (inv.client_name || '')).toLowerCase()}">
-      <td><strong style="font-variant-numeric:tabular-nums">${_iEsc(inv.invoice_number)}</strong></td>
+      <td>
+        ${inv.invoice_number && inv.invoice_number.toUpperCase().includes('DUPLICATE') ? `<span class="badge badge-warning" style="margin-right:6px">DUPLICATE</span>` : ''}
+        <strong style="font-variant-numeric:tabular-nums">${_iEsc(inv.invoice_number)}</strong>
+      </td>
       <td>
         ${inv.client_name
           ? `<div style="display:flex;align-items:center;gap:8px"><div class="client-avatar">${_iEsc(inv.client_name).charAt(0).toUpperCase()}</div><span>${_iEsc(inv.client_name)}</span></div>`

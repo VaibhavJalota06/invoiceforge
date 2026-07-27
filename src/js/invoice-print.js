@@ -253,7 +253,12 @@ function buildInvoicePrintHtml(inv, settings) {
       ${settings.tax_number ? `<p style="margin-top:6px"><strong>GST:</strong> ${_pEsc(settings.tax_number)}</p>` : ''}
     </div>
     <div class="invoice-meta">
-      <div class="inv-title">INVOICE</div>
+      ${inv.invoice_number && inv.invoice_number.toUpperCase().includes('DUPLICATE') ? `
+        <div style="display:inline-block;padding:4px 12px;background:#fee2e2;color:#dc2626;border:1.5px solid #ef4444;border-radius:4px;font-weight:900;font-size:13px;letter-spacing:2px;margin-bottom:8px;text-transform:uppercase">DUPLICATE COPY</div>
+        <div class="inv-title" style="color:#dc2626">DUPLICATE INVOICE</div>
+      ` : `
+        <div class="inv-title">INVOICE</div>
+      `}
       <div class="inv-number">${_pEsc(inv.invoice_number)}</div>
       <div class="inv-status">${_pEsc(statusLabel)}</div>
       <div class="meta-row"><strong>Date:</strong> ${_formatDate(inv.invoice_date)}</div>

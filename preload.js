@@ -61,6 +61,7 @@ contextBridge.exposeInMainWorld('api', {
   exportBackupZip: () => ipcRenderer.invoke('export-backup-zip'),
   importBackupZip: () => ipcRenderer.invoke('import-backup-zip'),
   restoreBackupFile: (filePath) => ipcRenderer.invoke('restore-backup-file', filePath),
+  resetDatabase: () => ipcRenderer.invoke('reset-database'),
 
   // Financial Reports & Selective Data Transfers
   getFinancialReportData: (filters) => ipcRenderer.invoke('get-financial-report-data', filters),

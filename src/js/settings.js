@@ -236,6 +236,15 @@ async function renderSettings() {
         </small>
       </div>
 
+      <!-- Clean Reset Card -->
+      <div class="card" style="margin-bottom:18px;border-top:3px solid var(--danger)">
+        <div class="form-section-title" style="color:var(--danger)">Reset Database to Fresh Clean State</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:14px;line-height:1.6">
+          Clear all created clients, vendors, invoices, purchases, stock, expenses, and reset invoice prefixes &amp; company settings to fresh defaults.
+        </p>
+        <button type="button" class="btn btn-secondary" id="btn-reset-db-fresh" style="color:var(--danger);border-color:var(--danger)">⚠️ Reset All Data &amp; Start Fresh</button>
+      </div>
+
       <!-- Security & Operations Audit Log -->
       <div class="card" style="margin-bottom:18px">
         <div class="form-section-title">Security &amp; Operational Audit Trail</div>
@@ -456,6 +465,19 @@ async function renderSettings() {
 
     await window.api.saveSettings(data);
     showToast('Settings saved successfully!', 'success');
+  });
+
+  // Reset database button
+  document.getElementById('btn-reset-db-fresh')?.addEventListener('click', async () => {
+    const confirmReset = confirm('⚠️ Are you sure you want to delete all clients, vendors, invoices, purchases, stock, and reset settings to a fresh clean state?\n\nThis action cannot be undone.');
+    if (!confirmReset) return;
+    const res = await window.api.resetDatabase();
+    if (res) {
+      showToast('🎉 Database reset to fresh clean state!', 'success');
+      setTimeout(() => renderSettings(), 400);
+    } else {
+      showToast('Failed to reset database', 'error');
+    }
   });
 
   // Check for updates button

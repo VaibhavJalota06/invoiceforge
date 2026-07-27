@@ -473,6 +473,11 @@ ipcMain.handle('restore-backup-file', async (_e, filePath) => {
   }
 });
 
+ipcMain.handle('reset-database', () => {
+  assertUnlocked();
+  return db.resetDatabaseToFreshState();
+});
+
 // ─── Financial Reports IPC ─────────────────────────────────────────────────────
 ipcMain.handle('get-financial-report', (_e, filters) => { assertUnlocked(); return db.getFinancialReportData(filters); });
 ipcMain.handle('get-financial-report-data', (_e, filters) => { assertUnlocked(); return db.getFinancialReportData(filters); });

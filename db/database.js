@@ -935,7 +935,9 @@ function saveInvoice(data) {
     `).run(inv);
     savedId = Number(result.lastInsertRowid);
     saveItems(savedId, items);
-    db.prepare('UPDATE settings SET invoice_counter = invoice_counter + 1 WHERE id = 1').run();
+    if (!inv.invoice_number.toUpperCase().startsWith('DUPLICATE')) {
+      db.prepare('UPDATE settings SET invoice_counter = invoice_counter + 1 WHERE id = 1').run();
+    }
   }
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
   return savedId;
@@ -966,7 +968,20 @@ function deleteInvoice(id) {
 function duplicateInvoice(id) {
   const inv = getInvoice(Number(id));
   if (!inv) return null;
-  const newNumber = getNextInvoiceNumber();
+
+  let baseNumber = (inv.invoice_number || '').replace(/^DUPLICATE(-\d+)?\s*-\s*/i, '').trim();
+
+  // Find existing duplicate count for this base number
+  const existingDups = db.prepare(`
+    SELECT invoice_number FROM invoices 
+    WHERE invoice_number = ? OR invoice_number LIKE ?
+  `).all(`DUPLICATE - ${baseNumber}`, `DUPLICATE-% - ${baseNumber}`);
+
+  let newNumber = `DUPLICATE - ${baseNumber}`;
+  if (existingDups.length > 0) {
+    newNumber = `DUPLICATE-${existingDups.length + 1} - ${baseNumber}`;
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   const s = getSettings();
   const due = new Date();
@@ -2898,8 +2913,56 @@ function getAgingReport(asOfDate = null) {
   };
 }
 
+function resetDatabaseToFreshState() {
+  if (!db) return false;
+  try {
+    db.prepare('DELETE FROM invoice_items').run();
+    db.prepare('DELETE FROM invoices').run();
+    db.prepare('DELETE FROM purchase_items').run();
+    db.prepare('DELETE FROM purchases').run();
+    db.prepare('DELETE FROM sales_return_items').run();
+    db.prepare('DELETE FROM sales_returns').run();
+    db.prepare('DELETE FROM quotation_items').run();
+    db.prepare('DELETE FROM quotations').run();
+    db.prepare('DELETE FROM stock_transactions').run();
+    db.prepare('DELETE FROM products').run();
+    db.prepare('DELETE FROM payment_records').run();
+    db.prepare('DELETE FROM expenses').run();
+    db.prepare('DELETE FROM clients').run();
+    db.prepare('DELETE FROM vendors').run();
+    db.prepare('DELETE FROM audit_logs').run();
+    db.prepare(`
+      UPDATE settings SET
+        company_name = '',
+        company_address = '',
+        company_phone = '',
+        company_email = '',
+        tax_number = '',
+        bank_details = '',
+        invoice_prefix = 'INV-2026-',
+        invoice_counter = 1,
+        purchase_prefix = 'PUR-2026-',
+        purchase_counter = 1,
+        quotation_prefix = 'QTN-2026-',
+        quotation_counter = 1,
+        return_prefix = 'RET-2026-',
+        return_counter = 1,
+        logo_path = '',
+        invoice_theme = 'classic',
+        primary_color = '#4f46e5'
+      WHERE id = 1
+    `).run();
+    try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
+    logAuditEvent('System', 'RESET_DATABASE', 'system', 1, 'Database reset to clean fresh state');
+    return true;
+  } catch (err) {
+    console.error('Error resetting database:', err);
+    return false;
+  }
+}
+
 module.exports = {
-  initDatabase, getDbPath, closeDatabase,
+  initDatabase, getDbPath, closeDatabase, resetDatabaseToFreshState,
   getSettings, saveSettings, verifyAdminPin, saveSecuritySettings, checkPostUpdateNotification,
   getAllClients, getClients: getAllClients, getClient, saveClient, deleteClient, getClientProfile, getClientFullProfile,
   getAllVendors, getVendors: getAllVendors, getVendor, saveVendor, deleteVendor, getVendorFullProfile,
