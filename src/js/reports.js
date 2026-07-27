@@ -53,7 +53,10 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
       <!-- Report View Tabs -->
       <div style="display:flex;gap:10px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:12px;flex-wrap:wrap">
         <button class="btn ${_currentReportTab === 'overview' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-overview" style="font-weight:600">
-          📊 Revenue &amp; GST Overview
+          📊 Revenue &amp; Financial Overview
+        </button>
+        <button class="btn ${_currentReportTab === 'gst' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-gst" style="font-weight:600">
+          🏛️ GST Liabilities &amp; Tax Audit
         </button>
         <button class="btn ${_currentReportTab === 'balancesheet' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-balancesheet" style="font-weight:600">
           ⚖️ Enterprise Balance Sheet
@@ -67,6 +70,7 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
       </div>
 
       ${_currentReportTab === 'overview' ? renderOverviewSection(report, fmt, currentYear) : ''}
+      ${_currentReportTab === 'gst' ? renderGstSection(report, fmt, currentYear) : ''}
       ${_currentReportTab === 'balancesheet' ? renderBalanceSheetSection(balanceSheet, fmt) : ''}
       ${_currentReportTab === 'stock' ? renderMonthlyStockSection(stockReport, fmt) : ''}
       ${_currentReportTab === 'aging' ? renderAgingSection(agingReport, fmt) : ''}
@@ -74,12 +78,13 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
 
     // Bind Tab Click Handlers
     document.getElementById('tab-btn-overview')?.addEventListener('click', () => renderReports(null, 'overview'));
+    document.getElementById('tab-btn-gst')?.addEventListener('click', () => renderReports(null, 'gst'));
     document.getElementById('tab-btn-balancesheet')?.addEventListener('click', () => renderReports(null, 'balancesheet'));
     document.getElementById('tab-btn-stock')?.addEventListener('click', () => renderReports(null, 'stock'));
     document.getElementById('tab-btn-aging')?.addEventListener('click', () => renderReports(null, 'aging'));
 
     // Bind Controls depending on active view
-    if (_currentReportTab === 'overview') {
+    if (_currentReportTab === 'overview' || _currentReportTab === 'gst') {
       bindOverviewEvents();
     } else if (_currentReportTab === 'balancesheet') {
       bindBalanceSheetEvents();
@@ -319,6 +324,150 @@ function renderOverviewSection(report, fmt, currentYear) {
         </div>
       </div>
 
+    </div>
+  `;
+}
+
+// ── GST LIABILITIES & TAX AUDIT SECTION ─────────────────────────────────────
+function renderGstSection(report, fmt, currentYear) {
+  const { metrics, taxBreakdown, invoices } = report;
+
+  const totalOutputTax = taxBreakdown.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+
+  return `
+    <!-- Filter Controls Bar -->
+    <div class="card" style="margin-bottom:20px;padding:16px 20px">
+      <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:14px">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <span style="font-size:13px;font-weight:600;color:var(--text)">Tax Assessment Period:</span>
+          
+          <select class="form-select" id="report-period-select" style="width:auto;min-width:140px">
+            <option value="month" ${!_currentReportFilters.period || _currentReportFilters.period === 'month' ? 'selected' : ''}>Monthly</option>
+            <option value="year" ${_currentReportFilters.period === 'year' ? 'selected' : ''}>Yearly</option>
+            <option value="custom" ${_currentReportFilters.period === 'custom' ? 'selected' : ''}>Custom Range</option>
+            <option value="all" ${_currentReportFilters.period === 'all' ? 'selected' : ''}>All Time</option>
+          </select>
+
+          <div id="wrap-month-select" style="display:${!_currentReportFilters.period || _currentReportFilters.period === 'month' ? 'flex' : 'none'};gap:8px">
+            <select class="form-select" id="report-month-select" style="width:auto">
+              <option value="01" ${_currentReportFilters.month === '01' ? 'selected' : ''}>January</option>
+              <option value="02" ${_currentReportFilters.month === '02' ? 'selected' : ''}>February</option>
+              <option value="03" ${_currentReportFilters.month === '03' ? 'selected' : ''}>March</option>
+              <option value="04" ${_currentReportFilters.month === '04' ? 'selected' : ''}>April</option>
+              <option value="05" ${_currentReportFilters.month === '05' ? 'selected' : ''}>May</option>
+              <option value="06" ${_currentReportFilters.month === '06' ? 'selected' : ''}>June</option>
+              <option value="07" ${_currentReportFilters.month === '07' ? 'selected' : ''}>July</option>
+              <option value="08" ${_currentReportFilters.month === '08' ? 'selected' : ''}>August</option>
+              <option value="09" ${_currentReportFilters.month === '09' ? 'selected' : ''}>September</option>
+              <option value="10" ${_currentReportFilters.month === '10' ? 'selected' : ''}>October</option>
+              <option value="11" ${_currentReportFilters.month === '11' ? 'selected' : ''}>November</option>
+              <option value="12" ${_currentReportFilters.month === '12' ? 'selected' : ''}>December</option>
+            </select>
+          </div>
+
+          <div id="wrap-year-select" style="display:${!_currentReportFilters.period || _currentReportFilters.period === 'month' || _currentReportFilters.period === 'year' ? 'flex' : 'none'};gap:8px">
+            <select class="form-select" id="report-year-select" style="width:auto">
+              <option value="${currentYear}" ${_currentReportFilters.year == currentYear ? 'selected' : ''}>${currentYear}</option>
+              <option value="${currentYear - 1}" ${_currentReportFilters.year == currentYear - 1 ? 'selected' : ''}>${currentYear - 1}</option>
+              <option value="${currentYear - 2}" ${_currentReportFilters.year == currentYear - 2 ? 'selected' : ''}>${currentYear - 2}</option>
+            </select>
+          </div>
+
+          <div id="wrap-custom-date" style="display:${_currentReportFilters.period === 'custom' ? 'flex' : 'none'};align-items:center;gap:8px">
+            <input class="form-input" id="report-date-from" type="date" value="${_currentReportFilters.date_from || ''}" style="width:auto" />
+            <span style="font-size:12px;color:var(--text-3)">to</span>
+            <input class="form-input" id="report-date-to" type="date" value="${_currentReportFilters.date_to || ''}" style="width:auto" />
+          </div>
+        </div>
+
+        <button class="btn btn-primary btn-sm" id="btn-export-tax-csv">Export Tax Audit Report (CSV)</button>
+      </div>
+    </div>
+
+    <!-- GST KPI Cards -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;margin-bottom:20px">
+      <div class="card card-body" style="border-top:4px solid var(--accent)">
+        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Total Taxable Turnover</div>
+        <div style="font-size:24px;font-weight:800;color:var(--accent);margin-top:6px">${fmt(metrics.totalBilled)}</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:4px">${metrics.totalInvoicesCount} invoices assessed</div>
+      </div>
+
+      <div class="card card-body" style="border-top:4px solid var(--warning)">
+        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">GST Output Tax (Sales)</div>
+        <div style="font-size:24px;font-weight:800;color:var(--warning);margin-top:6px">${fmt(totalOutputTax)}</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Collected from clients</div>
+      </div>
+
+      <div class="card card-body" style="border-top:4px solid var(--success)">
+        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Input Tax Credit (ITC)</div>
+        <div style="font-size:24px;font-weight:800;color:var(--success);margin-top:6px">${fmt(metrics.inputTaxCredit || 0)}</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Claimable from purchases</div>
+      </div>
+
+      <div class="card card-body" style="border-top:4px solid var(--danger)">
+        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Net Tax Payable</div>
+        <div style="font-size:24px;font-weight:800;color:var(--danger);margin-top:6px">${fmt(Math.max(0, totalOutputTax - (metrics.inputTaxCredit || 0)))}</div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Output Tax minus ITC</div>
+      </div>
+    </div>
+
+    <!-- Tax Rates Breakdown & Invoices Table -->
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start">
+      <div class="card card-body" style="padding:20px">
+        <h4 style="margin:0 0 16px;font-size:15px;font-weight:700">Tax Audit Ledger (${invoices.length} transactions)</h4>
+        ${invoices.length === 0 ? `
+          <div style="text-align:center;padding:30px;color:var(--text-2)">No tax liabilities found in selected window.</div>
+        ` : `
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Invoice #</th>
+                  <th>Date</th>
+                  <th>Client / GSTIN</th>
+                  <th style="text-align:right">Taxable Amount</th>
+                  <th style="text-align:right">Tax Collected</th>
+                  <th style="text-align:right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${invoices.map(inv => `
+                  <tr>
+                    <td class="td-mono" style="font-weight:600;color:var(--accent)">${escHtml(inv.invoice_number)}</td>
+                    <td style="color:var(--text-2)">${formatDate(inv.invoice_date)}</td>
+                    <td style="font-weight:600;color:var(--text)">
+                      ${escHtml(inv.client_name || 'Direct Client')}
+                      ${inv.client_gstin ? `<br><small style="color:var(--text-2)">GSTIN: ${escHtml(inv.client_gstin)}</small>` : ''}
+                    </td>
+                    <td style="text-align:right">${fmt(inv.subtotal)}</td>
+                    <td style="text-align:right;font-weight:700;color:var(--warning)">${fmt(inv.tax_amount)}</td>
+                    <td style="text-align:right;font-weight:800;color:var(--text)">${fmt(inv.grand_total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <div class="card card-body" style="padding:20px">
+        <h4 style="margin:0 0 14px;font-size:15px;font-weight:700">Tax Rate Slabs</h4>
+        ${taxBreakdown.length === 0 ? `
+          <div style="font-size:13px;color:var(--text-3);padding:10px 0">No tax breakdown available.</div>
+        ` : `
+          <div style="display:flex;flex-direction:column;gap:12px">
+            ${taxBreakdown.map(t => `
+              <div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:var(--bg-3);border-radius:6px;border:1px solid var(--border)">
+                <div>
+                  <div style="font-weight:700;font-size:13px;color:var(--text)">${escHtml(t.name)}</div>
+                  <div style="font-size:11px;color:var(--text-3)">Rate: ${t.rate}%</div>
+                </div>
+                <div style="font-weight:800;font-size:15px;color:var(--warning)">${fmt(t.amount)}</div>
+              </div>
+            `).join('')}
+          </div>
+        `}
+      </div>
     </div>
   `;
 }
