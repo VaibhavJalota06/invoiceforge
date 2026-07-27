@@ -3,10 +3,11 @@
  * Handles: line items, multi-tax, discount, currency, status, PDF/print export
  */
 
-let _editorInvoice = null;
-let _editorClients = [];
-let _editorItems   = [];
+let _editorInvoice  = null;
+let _editorClients  = [];
+let _editorItems    = [];
 let _editorTaxLines = [];
+let _editorSettings = null;
 
 async function openInvoiceEditor(invoiceId, options = {}) {
   const content = document.getElementById('page-content');
@@ -24,6 +25,7 @@ async function openInvoiceEditor(invoiceId, options = {}) {
     const clients = clientsRes || [];
     const products = productsRes || [];
 
+    _editorSettings = settings;
     _editorClients = clients;
     window._editorProducts = products;
     _editorInvoice = null;
@@ -176,8 +178,8 @@ async function openInvoiceEditor(invoiceId, options = {}) {
               <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
                 <label class="form-label" style="margin:0">Tax Lines &amp; GST Type</label>
                 <div style="display:flex;gap:6px">
-                  <button class="btn btn-ghost btn-sm" type="button" onclick="_applyGstPreset('instate')" title="In-State Billing (CGST 9% + SGST 9%)">🏢 In-State</button>
-                  <button class="btn btn-ghost btn-sm" type="button" onclick="_applyGstPreset('igst')" title="Out-of-State Billing (IGST 18%)" style="color:var(--accent);font-weight:700">✈️ Out of State (IGST)</button>
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-preset-instate" title="In-State Billing (CGST 9% + SGST 9%)">🏢 In-State</button>
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-preset-igst" title="Out-of-State Billing (IGST 18%)" style="color:var(--accent);font-weight:700">✈️ Out of State (IGST)</button>
                   <button class="btn btn-ghost btn-sm" type="button" id="btn-add-tax">${ICONS.plus} Add Tax</button>
                 </div>
               </div>
@@ -224,9 +226,11 @@ async function openInvoiceEditor(invoiceId, options = {}) {
     _renderLineItems();
   });
 
-  // Tax lines
+  // Tax lines & Presets
   _renderTaxLines();
-  document.getElementById('btn-add-tax').addEventListener('click', () => {
+  document.getElementById('btn-preset-instate')?.addEventListener('click', () => _applyGstPreset('instate'));
+  document.getElementById('btn-preset-igst')?.addEventListener('click', () => _applyGstPreset('igst'));
+  document.getElementById('btn-add-tax')?.addEventListener('click', () => {
     _editorTaxLines.push({ name:'Tax', rate:0, amount:0 });
     _renderTaxLines();
     _recalcTotals();
