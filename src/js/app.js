@@ -15,7 +15,7 @@ const PAGES = {
   payments:        () => renderPayments(),
   stock:           () => renderStock(),
   reports:         () => renderReports(null, 'overview'),
-  'reports-gst':   () => renderReports(null, 'overview'),
+  'reports-gst':   () => renderReports(null, 'gst'),
   'reports-aging': () => renderReports(null, 'aging'),
   settings:        () => renderSettings()
 };
