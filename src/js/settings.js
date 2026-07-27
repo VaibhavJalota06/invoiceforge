@@ -132,6 +132,24 @@ async function renderSettings() {
             <input class="form-input" id="s-footer" type="text" placeholder="Thank you for your business." value="${_esc(settings.invoice_footer)}">
           </div>
         </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="s-invoice-theme">PDF Invoice Layout Theme</label>
+            <select class="form-select" id="s-invoice-theme">
+              <option value="classic" ${settings.invoice_theme === 'classic' || !settings.invoice_theme ? 'selected' : ''}>🏢 Classic Corporate (Traditional Header &amp; Structured Grid)</option>
+              <option value="modern" ${settings.invoice_theme === 'modern' ? 'selected' : ''}>✨ Modern Sleek (Clean Accent Cards &amp; Dynamic Badges)</option>
+              <option value="minimal" ${settings.invoice_theme === 'minimal' ? 'selected' : ''}>✒️ Minimalist Elegance (Quiet Typography &amp; Clean Layout)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="s-primary-color">Brand Primary Accent Color</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <input type="color" id="s-primary-color-picker" value="${settings.primary_color || '#4f46e5'}" style="width:42px;height:38px;padding:2px;border-radius:6px;border:1px solid var(--border);cursor:pointer;background:var(--bg-3)">
+              <input class="form-input" id="s-primary-color" type="text" placeholder="#4f46e5" value="${_esc(settings.primary_color || '#4f46e5')}">
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- App Security & Passcode Protection -->
@@ -216,6 +234,17 @@ async function renderSettings() {
         <small style="color:var(--text-3);font-size:11.5px;margin-top:10px;display:block">
           💡 Tip: You can also drag and drop any InvoiceForge .zip backup file anywhere onto the app window to instantly restore data!
         </small>
+      </div>
+
+      <!-- Security & Operations Audit Log -->
+      <div class="card" style="margin-bottom:18px">
+        <div class="form-section-title">Security &amp; Operational Audit Trail</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">
+          Real-time event logging tracking key administrative actions, configuration updates, and financial operations.
+        </p>
+        <div id="settings-audit-log-container" style="max-height:260px;overflow-y:auto;background:var(--bg-3);border-radius:8px;border:1px solid var(--border);padding:10px">
+          <div style="text-align:center;color:var(--text-3);padding:15px;font-size:13px">Loading audit log events…</div>
+        </div>
       </div>
 
     </form>
@@ -363,6 +392,45 @@ async function renderSettings() {
     }
   });
 
+  // Sync Color Picker
+  const colorPicker = document.getElementById('s-primary-color-picker');
+  const colorText = document.getElementById('s-primary-color');
+  colorPicker?.addEventListener('input', () => { if (colorText) colorText.value = colorPicker.value; });
+  colorText?.addEventListener('input', () => { if (colorPicker && /^#[0-9A-F]{6}$/i.test(colorText.value)) colorPicker.value = colorText.value; });
+
+  // Load Audit Trail Logs
+  window.api.getAuditLogs?.(50, 0).then(res => {
+    const container = document.getElementById('settings-audit-log-container');
+    if (!container) return;
+    const logs = res?.logs || [];
+    if (logs.length === 0) {
+      container.innerHTML = `<div style="text-align:center;color:var(--text-3);padding:15px;font-size:13px">No audit log entries recorded yet.</div>`;
+      return;
+    }
+    container.innerHTML = `
+      <table class="table" style="font-size:12px;margin:0">
+        <thead>
+          <tr>
+            <th style="padding:6px 10px">Timestamp</th>
+            <th style="padding:6px 10px">User</th>
+            <th style="padding:6px 10px">Action</th>
+            <th style="padding:6px 10px">Details</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${logs.map(l => `
+            <tr>
+              <td class="td-mono" style="padding:6px 10px;color:var(--text-2);white-space:nowrap">${_esc(l.created_at)}</td>
+              <td style="padding:6px 10px;font-weight:600;color:var(--text)">${_esc(l.user_name)}</td>
+              <td style="padding:6px 10px"><span class="badge badge-info" style="font-size:10px">${_esc(l.action)}</span></td>
+              <td style="padding:6px 10px;color:var(--text-2)">${_esc(l.details)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  });
+
   prefixInput.addEventListener('input', updatePreview);
   counterInput.addEventListener('input', updatePreview);
 
@@ -381,7 +449,9 @@ async function renderSettings() {
       invoice_prefix:        document.getElementById('s-prefix').value.trim() || 'INV',
       invoice_counter:       parseInt(document.getElementById('s-counter').value) || 0,
       invoice_footer:        document.getElementById('s-footer').value.trim(),
-      logo_path:             logoPathInput ? logoPathInput.value : ''
+      logo_path:             logoPathInput ? logoPathInput.value : '',
+      invoice_theme:         document.getElementById('s-invoice-theme')?.value || 'classic',
+      primary_color:         document.getElementById('s-primary-color')?.value.trim() || '#4f46e5'
     };
 
     await window.api.saveSettings(data);

@@ -11,6 +11,9 @@ function buildInvoicePrintHtml(inv, settings) {
   const items     = Array.isArray(inv.items) ? inv.items : [];
   const snapshot  = inv.client_snapshot || {};
 
+  const primaryColor = settings?.primary_color || '#4f46e5';
+  const invoiceTheme = settings?.invoice_theme || 'classic';
+
   // Client info: prefer snapshot (captured at invoice time), fallback to joined columns
   const clientName    = inv.client_name    || snapshot.name    || '';
   const clientCompany = inv.client_company || snapshot.company_name || '';
@@ -62,6 +65,7 @@ function buildInvoicePrintHtml(inv, settings) {
     padding: 48px 52px;
     min-height: 100vh;
     background: #fff;
+    border-top: ${invoiceTheme === 'modern' ? `6px solid ${primaryColor}` : 'none'};
   }
   /* Header */
   .inv-header {
@@ -70,7 +74,7 @@ function buildInvoicePrintHtml(inv, settings) {
     align-items: flex-start;
     margin-bottom: 36px;
     padding-bottom: 28px;
-    border-bottom: 2px solid #e5e7eb;
+    border-bottom: ${invoiceTheme === 'minimal' ? '1px solid #e5e7eb' : `2px solid ${primaryColor}`};
   }
   .company-block h1 {
     font-size: 22px;
@@ -90,7 +94,7 @@ function buildInvoicePrintHtml(inv, settings) {
   .invoice-meta .inv-title {
     font-size: 28px;
     font-weight: 900;
-    color: #5c6bc0;
+    color: ${primaryColor};
     letter-spacing: -1px;
     margin-bottom: 8px;
   }
@@ -192,7 +196,7 @@ function buildInvoicePrintHtml(inv, settings) {
     padding-top: 12px;
     font-size: 16px;
     font-weight: 800;
-    color: #5c6bc0;
+    color: ${primaryColor};
   }
 
   /* Footer sections */

@@ -303,7 +303,23 @@ function createSchema() {
     `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (3, 'Staff Salaries', 'Employee compensation and payroll')`,
     `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (4, 'Software & Subscriptions', 'SaaS, hosting, IT tools')`,
     `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (5, 'Travel & Transport', 'Logistics, fuel, business travel')`,
-    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (6, 'Miscellaneous', 'General operational costs')`
+    `INSERT OR IGNORE INTO expense_categories (id, name, description) VALUES (6, 'Miscellaneous', 'General operational costs')`,
+    `ALTER TABLE settings ADD COLUMN invoice_theme TEXT DEFAULT 'classic'`,
+    `ALTER TABLE settings ADD COLUMN primary_color TEXT DEFAULT '#4f46e5'`,
+    `CREATE TABLE IF NOT EXISTS audit_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_name TEXT DEFAULT 'Admin',
+      action TEXT NOT NULL,
+      entity_type TEXT DEFAULT '',
+      entity_id INTEGER DEFAULT 0,
+      details TEXT DEFAULT '',
+      created_at TEXT DEFAULT (datetime('now'))
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_invoices_client_date ON invoices(client_id, invoice_date, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_purchases_vendor_date ON purchases(vendor_id, purchase_date, status)`,
+    `CREATE INDEX IF NOT EXISTS idx_stock_tx_product ON stock_transactions(product_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_expenses_category_date ON expenses(category_id, expense_date)`,
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch (e) {} // expected to fail if column already exists
@@ -339,11 +355,12 @@ function saveSettings(data) {
     'default_tax_rate','invoice_prefix','invoice_counter','invoice_footer','logo_path',
     'app_lock_enabled','admin_name','admin_pin','machine_guid',
     'purchase_prefix','purchase_counter','return_prefix','return_counter',
-    'quotation_prefix','quotation_counter'
+    'quotation_prefix','quotation_counter','invoice_theme','primary_color'
   ];
   const fields = allowed.filter(c => c in data).map(c => `${c} = @${c}`).join(', ');
   if (!fields) return true;
   db.prepare(`UPDATE settings SET ${fields} WHERE id = 1`).run(data);
+  try { logAuditEvent('UPDATE_SETTINGS', 'settings', 1, 'Updated app settings & branding'); } catch(e){}
   try { db.pragma('wal_checkpoint(TRUNCATE)'); } catch (e) {}
   return true;
 }
@@ -2712,8 +2729,108 @@ function seedDemoDataIfEmpty() {
         db.prepare('INSERT OR IGNORE INTO expense_categories (name, description) VALUES (?, ?)').run(name, description);
       }
     }
+
+    const clientCount = db.prepare('SELECT COUNT(*) as cnt FROM clients').get().cnt;
+    if (clientCount === 0) {
+      // 1. Seed Clients
+      const c1 = db.prepare(`INSERT INTO clients (name, company_name, billing_address, email, phone, gstin) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        'Rajesh Sharma', 'Acme Tech Solutions Ltd', 'Suite 402, Trade Tower, Bandra, Mumbai 400051', 'billing@acmetech.com', '+91 98200 12345', '27AABCA12341Z1'
+      ).lastInsertRowid;
+
+      const c2 = db.prepare(`INSERT INTO clients (name, company_name, billing_address, email, phone, gstin) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        'Anita Verma', 'Nexus Global Logistics', 'Building 12, Cyber Hub, Gurugram 122002', 'accounts@nexuslogistics.com', '+91 99100 67890', '07AAACN56782Z9'
+      ).lastInsertRowid;
+
+      const c3 = db.prepare(`INSERT INTO clients (name, company_name, billing_address, email, phone, gstin) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        'Suresh Patel', 'Horizon Retail Traders', '45 Commercial Street, Bengaluru 560001', 'suresh@horizonretail.in', '+91 94480 54321', '29AAACH98763Z4'
+      ).lastInsertRowid;
+
+      // 2. Seed Vendors
+      const v1 = db.prepare(`INSERT INTO vendors (name, company_name, address, email, phone, gstin) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        'Vikram Malhotra', 'Apex Hardware Suppliers', 'Plot 88, Industrial Area, Pune 411026', 'sales@apexsuppliers.com', '+91 98900 11223', '27AAACA99991Z3'
+      ).lastInsertRowid;
+
+      const v2 = db.prepare(`INSERT INTO vendors (name, company_name, address, email, phone, gstin) VALUES (?, ?, ?, ?, ?, ?)`).run(
+        'Priya Nair', 'CloudNet IT Systems', 'Level 5, Tech Park, Hyderabad 500081', 'info@cloudnet-it.com', '+91 97000 33445', '36AAACC44445Z2'
+      ).lastInsertRowid;
+
+      // 3. Seed Products
+      const p1 = db.prepare(`INSERT INTO products (name, sku, unit, cost_price, selling_rate, current_stock, reorder_level) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+        'UltraHD 4K Business Monitor 27"', 'MON-4K-27', 'Pcs', 14500, 22000, 18, 5
+      ).lastInsertRowid;
+
+      const p2 = db.prepare(`INSERT INTO products (name, sku, unit, cost_price, selling_rate, current_stock, reorder_level) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+        'Wireless Ergonomic Keyboard & Mouse', 'KBD-WL-01', 'Set', 1200, 2499, 45, 10
+      ).lastInsertRowid;
+
+      const p3 = db.prepare(`INSERT INTO products (name, sku, unit, cost_price, selling_rate, current_stock, reorder_level) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
+        'High-Speed Gigabit Fiber Router', 'RTR-GB-05', 'Pcs', 3100, 5200, 12, 4
+      ).lastInsertRowid;
+
+      // Helper dates
+      const now = new Date();
+      const fmtD = (daysAgo) => {
+        const d = new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000);
+        return d.toISOString().slice(0, 10);
+      };
+
+      // 4. Seed Invoices across Aging Buckets
+      const inv1 = db.prepare(`
+        INSERT INTO invoices (invoice_number, client_id, client_name, invoice_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('INV-2026-001', ?, 'Rajesh Sharma', ?, ?, 'INR', 44000, 7920, 51920, 'sent')
+      `).run(c1, fmtD(10), fmtD(0)).lastInsertRowid;
+      db.prepare(`INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount) VALUES (?, ?, ?, 2, 22000, 44000)`).run(inv1, p1, 'UltraHD 4K Business Monitor 27"');
+
+      const inv2 = db.prepare(`
+        INSERT INTO invoices (invoice_number, client_id, client_name, invoice_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('INV-2026-002', ?, 'Anita Verma', ?, ?, 'INR', 24990, 4498.2, 29488.2, 'overdue')
+      `).run(c2, fmtD(75), fmtD(45)).lastInsertRowid;
+      db.prepare(`INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount) VALUES (?, ?, ?, 10, 2499, 24990)`).run(inv2, p2, 'Wireless Ergonomic Keyboard & Mouse');
+
+      const inv3 = db.prepare(`
+        INSERT INTO invoices (invoice_number, client_id, client_name, invoice_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('INV-2026-003', ?, 'Suresh Patel', ?, ?, 'INR', 52000, 9360, 61360, 'overdue')
+      `).run(c3, fmtD(105), fmtD(75)).lastInsertRowid;
+      db.prepare(`INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount) VALUES (?, ?, ?, 10, 5200, 52000)`).run(inv3, p3, 'High-Speed Gigabit Fiber Router');
+
+      const inv4 = db.prepare(`
+        INSERT INTO invoices (invoice_number, client_id, client_name, invoice_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('INV-2026-004', ?, 'Rajesh Sharma', ?, ?, 'INR', 18500, 3330, 21830, 'overdue')
+      `).run(c1, fmtD(140), fmtD(110)).lastInsertRowid;
+      db.prepare(`INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount) VALUES (?, 0, 'Custom IT Setup & Deployment', 1, 18500, 18500)`).run(inv4);
+
+      const inv5 = db.prepare(`
+        INSERT INTO invoices (invoice_number, client_id, client_name, invoice_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('INV-2026-005', ?, 'Anita Verma', ?, ?, 'INR', 44000, 7920, 51920, 'paid')
+      `).run(c2, fmtD(20), fmtD(5)).lastInsertRowid;
+      db.prepare(`INSERT INTO invoice_items (invoice_id, product_id, description, quantity, rate, amount) VALUES (?, ?, ?, 2, 22000, 44000)`).run(inv5, p1, 'UltraHD 4K Business Monitor 27"');
+
+      // 5. Seed Purchases across AP Aging Buckets
+      const pur1 = db.prepare(`
+        INSERT INTO purchases (purchase_number, vendor_id, vendor_name, purchase_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('PUR-2026-001', ?, 'Vikram Malhotra', ?, ?, 'INR', 72500, 13050, 85550, 'pending')
+      `).run(v1, fmtD(15), fmtD(15)).lastInsertRowid;
+      db.prepare(`INSERT INTO purchase_items (purchase_id, product_id, description, quantity, cost_price, amount) VALUES (?, ?, ?, 5, 14500, 72500)`).run(pur1, p1, 'UltraHD 4K Business Monitor 27"');
+
+      const pur2 = db.prepare(`
+        INSERT INTO purchases (purchase_number, vendor_id, vendor_name, purchase_date, due_date, currency, subtotal, tax_amount, grand_total, status)
+        VALUES ('PUR-2026-002', ?, 'Priya Nair', ?, ?, 'INR', 31000, 5580, 36580, 'pending')
+      `).run(v2, fmtD(60), fmtD(50)).lastInsertRowid;
+      db.prepare(`INSERT INTO purchase_items (purchase_id, product_id, description, quantity, cost_price, amount) VALUES (?, ?, ?, 10, 3100, 31000)`).run(pur2, p3, 'High-Speed Gigabit Fiber Router');
+
+      // 6. Seed Audit Log Events
+      db.prepare(`INSERT INTO audit_logs (user_name, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)`).run(
+        'Administrator', 'SYSTEM_INIT', 'system', 1, 'Initialized Enterprise Workstation v1.3.0 with demo accounting data'
+      );
+      db.prepare(`INSERT INTO audit_logs (user_name, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)`).run(
+        'Administrator', 'CREATE_INVOICE', 'invoices', inv1, 'Generated Invoice #INV-2026-001 for Acme Tech Solutions Ltd'
+      );
+      db.prepare(`INSERT INTO audit_logs (user_name, action, entity_type, entity_id, details) VALUES (?, ?, ?, ?, ?)`).run(
+        'Administrator', 'UPDATE_SETTINGS', 'settings', 1, 'Configured PDF Layout Theme (Modern) & Primary Accent Color (#4f46e5)'
+      );
+    }
   } catch (err) {
-    console.error('Error seeding initial expense categories:', err);
+    console.error('Error seeding demo data:', err);
   }
 }
 
@@ -2749,6 +2866,138 @@ function closeDatabase() {
   }
 }
 
+// ── Audit Logs & Security Logging ──────────────────────────────────────────────
+function logAuditEvent(action, entityType = '', entityId = 0, details = '') {
+  try {
+    const activeUser = getActiveUser();
+    const userName = activeUser ? activeUser.name : 'Admin';
+    db.prepare(`
+      INSERT INTO audit_logs (user_name, action, entity_type, entity_id, details)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(userName, action, entityType, Number(entityId) || 0, typeof details === 'object' ? JSON.stringify(details) : String(details));
+  } catch (e) {
+    console.error('logAuditEvent error:', e.message);
+  }
+}
+
+function getAuditLogs(limit = 100, offset = 0) {
+  try {
+    const rows = db.prepare(`
+      SELECT * FROM audit_logs ORDER BY id DESC LIMIT ? OFFSET ?
+    `).all(limit, offset);
+    const countRow = db.prepare(`SELECT COUNT(*) as total FROM audit_logs`).get();
+    return { logs: rows, total: countRow ? countRow.total : rows.length };
+  } catch (e) {
+    console.error('getAuditLogs error:', e.message);
+    return { logs: [], total: 0 };
+  }
+}
+
+// ── Accounts Receivable & Accounts Payable (AR/AP) Aging Report ───────────────
+function getAgingReport(asOfDate = null) {
+  const targetDate = asOfDate ? new Date(asOfDate) : new Date();
+
+  // 1. Accounts Receivable (Invoices)
+  const unpaidInvoices = db.prepare(`
+    SELECT i.*, c.name as client_name_db, c.company_name as client_company
+    FROM invoices i
+    LEFT JOIN clients c ON i.client_id = c.id
+    WHERE i.status IN ('sent', 'overdue', 'unpaid', 'partially_paid', 'draft')
+  `).all();
+
+  const clientMap = {};
+  const arSummary = { current: 0, days31_60: 0, days61_90: 0, days90Plus: 0, total: 0 };
+
+  unpaidInvoices.forEach(inv => {
+    const refDate = new Date(inv.due_date || inv.invoice_date || inv.created_at);
+    const diffTime = targetDate - refDate;
+    const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+    const amount = Number(inv.grand_total) || 0;
+
+    let bucket = 'current';
+    if (diffDays > 90) bucket = 'days90Plus';
+    else if (diffDays > 60) bucket = 'days61_90';
+    else if (diffDays > 30) bucket = 'days31_60';
+
+    arSummary[bucket] += amount;
+    arSummary.total += amount;
+
+    const clientId = inv.client_id || 0;
+    const clientName = inv.client_name || inv.client_name_db || 'Walk-in Customer';
+
+    if (!clientMap[clientId]) {
+      clientMap[clientId] = {
+        clientId,
+        clientName,
+        companyName: inv.client_company || '',
+        current: 0,
+        days31_60: 0,
+        days61_90: 0,
+        days90Plus: 0,
+        total: 0,
+        invoiceCount: 0
+      };
+    }
+    clientMap[clientId][bucket] += amount;
+    clientMap[clientId].total += amount;
+    clientMap[clientId].invoiceCount += 1;
+  });
+
+  // 2. Accounts Payable (Purchases)
+  const unpaidPurchases = db.prepare(`
+    SELECT p.*, v.name as vendor_name_db, v.company_name as vendor_company
+    FROM purchases p
+    LEFT JOIN vendors v ON p.vendor_id = v.id
+    WHERE p.status IN ('received', 'pending', 'unpaid', 'partially_paid')
+  `).all();
+
+  const vendorMap = {};
+  const apSummary = { current: 0, days31_60: 0, days61_90: 0, days90Plus: 0, total: 0 };
+
+  unpaidPurchases.forEach(pur => {
+    const refDate = new Date(pur.due_date || pur.purchase_date || pur.created_at);
+    const diffTime = targetDate - refDate;
+    const diffDays = Math.max(0, Math.floor(diffTime / (1000 * 60 * 60 * 24)));
+    const amount = Number(pur.grand_total) || 0;
+
+    let bucket = 'current';
+    if (diffDays > 90) bucket = 'days90Plus';
+    else if (diffDays > 60) bucket = 'days61_90';
+    else if (diffDays > 30) bucket = 'days31_60';
+
+    apSummary[bucket] += amount;
+    apSummary.total += amount;
+
+    const vendorId = pur.vendor_id || 0;
+    const vendorName = pur.vendor_name || pur.vendor_name_db || 'Unknown Vendor';
+
+    if (!vendorMap[vendorId]) {
+      vendorMap[vendorId] = {
+        vendorId,
+        vendorName,
+        companyName: pur.vendor_company || '',
+        current: 0,
+        days31_60: 0,
+        days61_90: 0,
+        days90Plus: 0,
+        total: 0,
+        purchaseCount: 0
+      };
+    }
+    vendorMap[vendorId][bucket] += amount;
+    vendorMap[vendorId].total += amount;
+    vendorMap[vendorId].purchaseCount += 1;
+  });
+
+  return {
+    asOfDate: targetDate.toISOString().slice(0, 10),
+    arSummary,
+    apSummary,
+    clientAging: Object.values(clientMap).sort((a, b) => b.total - a.total),
+    vendorAging: Object.values(vendorMap).sort((a, b) => b.total - a.total)
+  };
+}
+
 module.exports = {
   initDatabase, getDbPath, closeDatabase,
   getSettings, saveSettings, verifyAdminPin, saveSecuritySettings, checkPostUpdateNotification,
@@ -2766,5 +3015,6 @@ module.exports = {
   getAllSalesReturns, getSalesReturns: getAllSalesReturns, getSalesReturn, getNextReturnNumberObj, saveSalesReturn, deleteSalesReturn,
   getAllExpenses, getExpense, saveExpense, deleteExpense, getAllExpenseCategories, saveExpenseCategory, deleteExpenseCategory,
   getAllQuotations, getQuotations: getAllQuotations, getQuotation, getNextQuotationNumberObj, saveQuotationAndReturn, deleteQuotation, convertQuotationToInvoice,
-  getPaymentRecords, savePaymentRecord, deletePaymentRecord, getAccountBalances
+  getPaymentRecords, savePaymentRecord, deletePaymentRecord, getAccountBalances,
+  logAuditEvent, getAuditLogs, getAgingReport
 };

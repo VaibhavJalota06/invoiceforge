@@ -478,6 +478,8 @@ ipcMain.handle('get-financial-report', (_e, filters) => { assertUnlocked(); retu
 ipcMain.handle('get-financial-report-data', (_e, filters) => { assertUnlocked(); return db.getFinancialReportData(filters); });
 ipcMain.handle('get-balance-sheet', (_e, asOfDate) => { assertUnlocked(); return db.getBalanceSheet(asOfDate); });
 ipcMain.handle('get-monthly-stock-report', (_e, filters) => { assertUnlocked(); return db.getMonthlyStockReport(filters); });
+ipcMain.handle('get-aging-report', (_e, asOfDate) => { assertUnlocked(); return db.getAgingReport(asOfDate); });
+ipcMain.handle('get-audit-logs', (_e, limit, offset) => { assertUnlocked(); return db.getAuditLogs(limit, offset); });
 
 // ─── Personalized User Profiles & Multi-User IPC ──────────────────────────────
 ipcMain.handle('get-all-users', () => { assertUnlocked(); return db.getAllUsers(); });

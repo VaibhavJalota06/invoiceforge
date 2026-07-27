@@ -66,6 +66,8 @@ contextBridge.exposeInMainWorld('api', {
   getFinancialReportData: (filters) => ipcRenderer.invoke('get-financial-report-data', filters),
   getBalanceSheet: (asOfDate) => ipcRenderer.invoke('get-balance-sheet', asOfDate),
   getMonthlyStockReport: (filters) => ipcRenderer.invoke('get-monthly-stock-report', filters),
+  getAgingReport: (asOfDate) => ipcRenderer.invoke('get-aging-report', asOfDate),
+  getAuditLogs: (limit, offset) => ipcRenderer.invoke('get-audit-logs', limit, offset),
   exportFinancialCsv: (filters, type) => ipcRenderer.invoke('export-financial-csv', filters, type),
   exportMonthlyDataPackage: (filters) => ipcRenderer.invoke('export-monthly-data-package', filters),
   importMonthlyDataPackage: () => ipcRenderer.invoke('import-monthly-data-package'),

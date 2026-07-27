@@ -28,6 +28,7 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
     const report = await window.api.getFinancialReportData(_currentReportFilters);
     const balanceSheet = await window.api.getBalanceSheet();
     const stockReport = await window.api.getMonthlyStockReport(_currentReportFilters);
+    const agingReport = await window.api.getAgingReport();
     const settings = await window.api.getSettings();
 
     const curr = getCurrency(settings?.default_currency || 'INR');
@@ -40,7 +41,7 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
       <div class="page-header">
         <div>
           <h1 class="page-title">Financial Reports &amp; Analytics</h1>
-          <p class="page-subtitle">Balance sheet statements, monthly stock valuations, revenue ledgers &amp; GST liabilities</p>
+          <p class="page-subtitle">Balance sheet statements, monthly stock valuations, aging schedules &amp; GST liabilities</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-secondary" id="btn-export-month-pkg">${ICONS.plus || ''} Export Selected Month Package (.zip)</button>
@@ -58,19 +59,24 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
           ⚖️ Enterprise Balance Sheet
         </button>
         <button class="btn ${_currentReportTab === 'stock' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-stock" style="font-weight:600">
-          📦 Monthly Stock &amp; Inventory Valuation
+          📦 Stock &amp; Inventory Valuation
+        </button>
+        <button class="btn ${_currentReportTab === 'aging' ? 'btn-primary' : 'btn-secondary'}" id="tab-btn-aging" style="font-weight:600">
+          ⏳ AR/AP Aging Analysis
         </button>
       </div>
 
       ${_currentReportTab === 'overview' ? renderOverviewSection(report, fmt, currentYear) : ''}
       ${_currentReportTab === 'balancesheet' ? renderBalanceSheetSection(balanceSheet, fmt) : ''}
       ${_currentReportTab === 'stock' ? renderMonthlyStockSection(stockReport, fmt) : ''}
+      ${_currentReportTab === 'aging' ? renderAgingSection(agingReport, fmt) : ''}
     `;
 
     // Bind Tab Click Handlers
     document.getElementById('tab-btn-overview')?.addEventListener('click', () => renderReports(null, 'overview'));
     document.getElementById('tab-btn-balancesheet')?.addEventListener('click', () => renderReports(null, 'balancesheet'));
     document.getElementById('tab-btn-stock')?.addEventListener('click', () => renderReports(null, 'stock'));
+    document.getElementById('tab-btn-aging')?.addEventListener('click', () => renderReports(null, 'aging'));
 
     // Bind Controls depending on active view
     if (_currentReportTab === 'overview') {
@@ -79,6 +85,8 @@ async function renderReports(filtersOverride = null, activeTabOverride = null) {
       bindBalanceSheetEvents();
     } else if (_currentReportTab === 'stock') {
       bindStockEvents();
+    } else if (_currentReportTab === 'aging') {
+      bindAgingEvents();
     }
 
     // Global Package Export/Import
@@ -570,6 +578,161 @@ function bindStockEvents() {
     const res = await window.api.exportFinancialCsv(_currentReportFilters, 'products');
     if (res?.success) showToast('Product stock report exported to CSV!', 'success');
   });
+}
+
+// ── AR/AP AGING ANALYSIS SECTION ─────────────────────────────────────────────
+function renderAgingSection(aging, fmt) {
+  const { asOfDate, arSummary, apSummary, clientAging, vendorAging } = aging || {};
+
+  return `
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <!-- As Of Date Header Banner -->
+      <div class="card card-body" style="background:var(--surface);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;padding:16px 24px">
+        <div>
+          <h3 style="margin:0;font-size:18px;font-weight:700">Accounts Receivable &amp; Payable Aging Schedule</h3>
+          <p style="margin:4px 0 0;font-size:13px;color:var(--text-2)">Evaluated as of <strong>${asOfDate}</strong></p>
+        </div>
+      </div>
+
+      <!-- AR Metric Cards -->
+      <div>
+        <h4 style="margin:0 0 12px;font-size:15px;color:var(--text);font-weight:700">📥 Accounts Receivable (Client Overdue Balances)</h4>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px">
+          <div class="card card-body" style="border-top:4px solid var(--accent)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Total Receivables</div>
+            <div style="font-size:22px;font-weight:800;color:var(--accent);margin-top:6px">${fmt(arSummary?.total)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid var(--success)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Current (0–30 Days)</div>
+            <div style="font-size:20px;font-weight:700;color:var(--success);margin-top:6px">${fmt(arSummary?.current)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid var(--warning)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">31–60 Days Overdue</div>
+            <div style="font-size:20px;font-weight:700;color:var(--warning);margin-top:6px">${fmt(arSummary?.days31_60)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid #f97316">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">61–90 Days Overdue</div>
+            <div style="font-size:20px;font-weight:700;color:#f97316;margin-top:6px">${fmt(arSummary?.days61_90)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid var(--danger)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">90+ Days Overdue</div>
+            <div style="font-size:20px;font-weight:700;color:var(--danger);margin-top:6px">${fmt(arSummary?.days90Plus)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Client Aging Breakdown Table -->
+      <div class="card card-body" style="padding:20px">
+        <h4 style="margin:0 0 16px;font-size:15px;font-weight:700">Client Outstanding Breakdown</h4>
+        ${(!clientAging || clientAging.length === 0) ? `
+          <div style="text-align:center;padding:30px;color:var(--text-2)">🎉 Excellent! No outstanding client balances or overdue invoices.</div>
+        ` : `
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Client / Company</th>
+                  <th style="text-align:center">Invoices</th>
+                  <th style="text-align:right">Current (0-30d)</th>
+                  <th style="text-align:right">31–60 Days</th>
+                  <th style="text-align:right">61–90 Days</th>
+                  <th style="text-align:right">90+ Days</th>
+                  <th style="text-align:right">Total Outstanding</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${clientAging.map(c => `
+                  <tr>
+                    <td style="font-weight:600;color:var(--text)">
+                      ${escHtml(c.clientName)}
+                      ${c.companyName ? `<br><small style="color:var(--text-2)">${escHtml(c.companyName)}</small>` : ''}
+                    </td>
+                    <td style="text-align:center">${c.invoiceCount}</td>
+                    <td style="text-align:right;color:${c.current > 0 ? 'var(--text)' : 'var(--text-2)'}">${fmt(c.current)}</td>
+                    <td style="text-align:right;color:${c.days31_60 > 0 ? 'var(--warning)' : 'var(--text-2)'}">${fmt(c.days31_60)}</td>
+                    <td style="text-align:right;color:${c.days61_90 > 0 ? '#f97316' : 'var(--text-2)'}">${fmt(c.days61_90)}</td>
+                    <td style="text-align:right;font-weight:700;color:${c.days90Plus > 0 ? 'var(--danger)' : 'var(--text-2)'}">${fmt(c.days90Plus)}</td>
+                    <td style="text-align:right;font-weight:800;color:var(--accent)">${fmt(c.total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+
+      <!-- AP Metric Cards -->
+      <div style="margin-top:10px">
+        <h4 style="margin:0 0 12px;font-size:15px;color:var(--text);font-weight:700">📤 Accounts Payable (Vendor Pending Liabilities)</h4>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));gap:14px">
+          <div class="card card-body" style="border-top:4px solid #8b5cf6">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Total Payables</div>
+            <div style="font-size:22px;font-weight:800;color:#8b5cf6;margin-top:6px">${fmt(apSummary?.total)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid var(--success)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Current (0–30 Days)</div>
+            <div style="font-size:20px;font-weight:700;color:var(--success);margin-top:6px">${fmt(apSummary?.current)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid var(--warning)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">31–60 Days Pending</div>
+            <div style="font-size:20px;font-weight:700;color:var(--warning);margin-top:6px">${fmt(apSummary?.days31_60)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid #f97316">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">61–90 Days Pending</div>
+            <div style="font-size:20px;font-weight:700;color:#f97316;margin-top:6px">${fmt(apSummary?.days61_90)}</div>
+          </div>
+          <div class="card card-body" style="border-top:4px solid var(--danger)">
+            <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">90+ Days Pending</div>
+            <div style="font-size:20px;font-weight:700;color:var(--danger);margin-top:6px">${fmt(apSummary?.days90Plus)}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vendor Aging Breakdown Table -->
+      <div class="card card-body" style="padding:20px">
+        <h4 style="margin:0 0 16px;font-size:15px;font-weight:700">Vendor Outstanding Payable Breakdown</h4>
+        ${(!vendorAging || vendorAging.length === 0) ? `
+          <div style="text-align:center;padding:30px;color:var(--text-2)">🎉 Great! No pending purchase bills or vendor payables.</div>
+        ` : `
+          <div class="table-responsive">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Vendor / Company</th>
+                  <th style="text-align:center">Purchases</th>
+                  <th style="text-align:right">Current (0-30d)</th>
+                  <th style="text-align:right">31–60 Days</th>
+                  <th style="text-align:right">61–90 Days</th>
+                  <th style="text-align:right">90+ Days</th>
+                  <th style="text-align:right">Total Payable</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${vendorAging.map(v => `
+                  <tr>
+                    <td style="font-weight:600;color:var(--text)">
+                      ${escHtml(v.vendorName)}
+                      ${v.companyName ? `<br><small style="color:var(--text-2)">${escHtml(v.companyName)}</small>` : ''}
+                    </td>
+                    <td style="text-align:center">${v.purchaseCount}</td>
+                    <td style="text-align:right;color:${v.current > 0 ? 'var(--text)' : 'var(--text-2)'}">${fmt(v.current)}</td>
+                    <td style="text-align:right;color:${v.days31_60 > 0 ? 'var(--warning)' : 'var(--text-2)'}">${fmt(v.days31_60)}</td>
+                    <td style="text-align:right;color:${v.days61_90 > 0 ? '#f97316' : 'var(--text-2)'}">${fmt(v.days61_90)}</td>
+                    <td style="text-align:right;font-weight:700;color:${v.days90Plus > 0 ? 'var(--danger)' : 'var(--text-2)'}">${fmt(v.days90Plus)}</td>
+                    <td style="text-align:right;font-weight:800;color:#8b5cf6">${fmt(v.total)}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+}
+
+function bindAgingEvents() {
+  // Aging view controls
 }
 
 window.renderReports = renderReports;
