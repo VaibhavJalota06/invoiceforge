@@ -333,6 +333,9 @@ function renderGstSection(report, fmt, currentYear) {
   const { metrics, taxBreakdown, invoices } = report;
 
   const totalOutputTax = taxBreakdown.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+  const cgstTotal = taxBreakdown.filter(t => t.name.toUpperCase().includes('CGST')).reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const sgstTotal = taxBreakdown.filter(t => t.name.toUpperCase().includes('SGST')).reduce((sum, t) => sum + Number(t.amount || 0), 0);
+  const igstTotal = taxBreakdown.filter(t => t.name.toUpperCase().includes('IGST')).reduce((sum, t) => sum + Number(t.amount || 0), 0);
 
   return `
     <!-- Filter Controls Bar -->
@@ -385,29 +388,35 @@ function renderGstSection(report, fmt, currentYear) {
     </div>
 
     <!-- GST KPI Cards -->
-    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:16px;margin-bottom:20px">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;margin-bottom:20px">
       <div class="card card-body" style="border-top:4px solid var(--accent)">
-        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Total Taxable Turnover</div>
-        <div style="font-size:24px;font-weight:800;color:var(--accent);margin-top:6px">${fmt(metrics.totalBilled)}</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:4px">${metrics.totalInvoicesCount} invoices assessed</div>
+        <div style="font-size:11.5px;color:var(--text-2);text-transform:uppercase;font-weight:600">Taxable Turnover</div>
+        <div style="font-size:22px;font-weight:800;color:var(--accent);margin-top:4px">${fmt(metrics.totalBilled)}</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">${metrics.totalInvoicesCount} invoices assessed</div>
       </div>
 
       <div class="card card-body" style="border-top:4px solid var(--warning)">
-        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">GST Output Tax (Sales)</div>
-        <div style="font-size:24px;font-weight:800;color:var(--warning);margin-top:6px">${fmt(totalOutputTax)}</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Collected from clients</div>
+        <div style="font-size:11.5px;color:var(--text-2);text-transform:uppercase;font-weight:600">CGST + SGST (In-State)</div>
+        <div style="font-size:22px;font-weight:800;color:var(--warning);margin-top:4px">${fmt(cgstTotal + sgstTotal)}</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">CGST: ${fmt(cgstTotal)} | SGST: ${fmt(sgstTotal)}</div>
+      </div>
+
+      <div class="card card-body" style="border-top:4px solid var(--primary,#6366f1)">
+        <div style="font-size:11.5px;color:var(--text-2);text-transform:uppercase;font-weight:600">IGST (Out of State)</div>
+        <div style="font-size:22px;font-weight:800;color:var(--primary,#6366f1);margin-top:4px">${fmt(igstTotal)}</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Integrated GST Inter-State</div>
       </div>
 
       <div class="card card-body" style="border-top:4px solid var(--success)">
-        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Input Tax Credit (ITC)</div>
-        <div style="font-size:24px;font-weight:800;color:var(--success);margin-top:6px">${fmt(metrics.inputTaxCredit || 0)}</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Claimable from purchases</div>
+        <div style="font-size:11.5px;color:var(--text-2);text-transform:uppercase;font-weight:600">Input Tax Credit (ITC)</div>
+        <div style="font-size:22px;font-weight:800;color:var(--success);margin-top:4px">${fmt(metrics.inputTaxCredit || 0)}</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Claimable from purchases</div>
       </div>
 
       <div class="card card-body" style="border-top:4px solid var(--danger)">
-        <div style="font-size:12px;color:var(--text-2);text-transform:uppercase;font-weight:600">Net Tax Payable</div>
-        <div style="font-size:24px;font-weight:800;color:var(--danger);margin-top:6px">${fmt(Math.max(0, totalOutputTax - (metrics.inputTaxCredit || 0)))}</div>
-        <div style="font-size:12px;color:var(--text-3);margin-top:4px">Output Tax minus ITC</div>
+        <div style="font-size:11.5px;color:var(--text-2);text-transform:uppercase;font-weight:600">Net Tax Payable</div>
+        <div style="font-size:22px;font-weight:800;color:var(--danger);margin-top:4px">${fmt(Math.max(0, totalOutputTax - (metrics.inputTaxCredit || 0)))}</div>
+        <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">Total Output minus ITC</div>
       </div>
     </div>
 

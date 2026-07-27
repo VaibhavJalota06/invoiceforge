@@ -363,15 +363,63 @@ function _renderPurchaseTaxRows() {
   const container = document.getElementById('pur-tax-lines-wrap');
   if (!container) return;
 
-  container.innerHTML = _editorPurchaseTaxLines.map((tax, idx) => `
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;font-size:12.5px">
-      <div style="display:flex;align-items:center;gap:4px">
-        <input class="form-input tax-name-input" data-index="${idx}" type="text" value="${_peEsc(tax.name)}" style="width:70px;padding:2px 6px;font-size:11px">
-        <input class="form-input tax-rate-input" data-index="${idx}" type="number" step="0.1" value="${tax.rate || 0}" style="width:50px;padding:2px 6px;font-size:11px">%
+  container.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <span style="font-size:12px;font-weight:600;color:var(--text)">Purchase Tax Lines:</span>
+      <div style="display:flex;gap:4px">
+        <button class="btn btn-ghost btn-sm" type="button" onclick="_applyPurGstPreset('instate')" style="font-size:10.5px;padding:2px 6px">In-State</button>
+        <button class="btn btn-ghost btn-sm" type="button" onclick="_applyPurGstPreset('igst')" style="font-size:10.5px;padding:2px 6px;color:var(--accent);font-weight:700">Out-of-State (IGST)</button>
       </div>
-      <span class="tax-amount-span" data-index="${idx}" style="font-weight:600">₹ 0.00</span>
     </div>
-  `).join('');
+    ${_editorPurchaseTaxLines.map((tax, idx) => {
+      const isKnownTax = ['CGST', 'SGST', 'IGST', 'UTGST', 'CESS'].includes(tax.name?.toUpperCase());
+      return `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:6px;font-size:12.5px">
+          <div style="display:flex;align-items:center;gap:4px">
+            <select class="form-select" style="width:80px;padding:2px 4px;font-size:11px;font-weight:600" onchange="_onPurTaxTypeSelect(${idx}, this.value)">
+              <option value="CGST" ${tax.name?.toUpperCase() === 'CGST' ? 'selected' : ''}>CGST</option>
+              <option value="SGST" ${tax.name?.toUpperCase() === 'SGST' ? 'selected' : ''}>SGST</option>
+              <option value="IGST" ${tax.name?.toUpperCase() === 'IGST' ? 'selected' : ''}>IGST</option>
+              <option value="UTGST" ${tax.name?.toUpperCase() === 'UTGST' ? 'selected' : ''}>UTGST</option>
+              <option value="custom" ${!isKnownTax ? 'selected' : ''}>Custom</option>
+            </select>
+            <input class="form-input tax-name-input" data-index="${idx}" type="text" value="${_peEsc(tax.name)}" style="width:60px;padding:2px 6px;font-size:11px">
+            <input class="form-input tax-rate-input" data-index="${idx}" type="number" step="0.1" value="${tax.rate || 0}" style="width:45px;padding:2px 6px;font-size:11px">%
+          </div>
+          <span class="tax-amount-span" data-index="${idx}" style="font-weight:600">₹ 0.00</span>
+        </div>
+      `;
+    }).join('')}
+  `;
+
+  window._onPurTaxTypeSelect = function(idx, val) {
+    if (val !== 'custom') {
+      _editorPurchaseTaxLines[idx].name = val;
+      const defaultTaxRate = _editorPurchaseSettings?.default_tax_rate || 18;
+      if (val === 'IGST') {
+        _editorPurchaseTaxLines[idx].rate = defaultTaxRate;
+      } else if (val === 'CGST' || val === 'SGST') {
+        _editorPurchaseTaxLines[idx].rate = Math.round((defaultTaxRate / 2) * 100) / 100;
+      }
+    }
+    _renderPurchaseTaxRows();
+    _recalcPurchaseTotals();
+  };
+
+  window._applyPurGstPreset = function(type) {
+    const defaultRate = _editorPurchaseSettings?.default_tax_rate || 18;
+    if (type === 'igst') {
+      _editorPurchaseTaxLines = [{ name: 'IGST', rate: defaultRate, amount: 0 }];
+    } else if (type === 'instate') {
+      const halfRate = Math.round((defaultRate / 2) * 100) / 100;
+      _editorPurchaseTaxLines = [
+        { name: 'CGST', rate: halfRate, amount: 0 },
+        { name: 'SGST', rate: halfRate, amount: 0 }
+      ];
+    }
+    _renderPurchaseTaxRows();
+    _recalcPurchaseTotals();
+  };
 
   container.querySelectorAll('.tax-name-input').forEach(inp => {
     inp.addEventListener('input', (e) => {

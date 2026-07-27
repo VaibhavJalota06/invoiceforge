@@ -170,11 +170,15 @@ async function openInvoiceEditor(invoiceId, options = {}) {
                   value="${invoice?.discount_value||0}" oninput="_recalcTotals()">
               </div>
             </div>
-            <!-- Tax Lines -->
+            <!-- Tax Lines & GST Presets -->
             <div style="margin-bottom:14px">
-              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-                <label class="form-label" style="margin:0">Tax Lines</label>
-                <button class="btn btn-ghost btn-sm" id="btn-add-tax">${ICONS.plus} Add Tax</button>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px">
+                <label class="form-label" style="margin:0">Tax Lines &amp; GST Type</label>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="_applyGstPreset('instate')" title="In-State Billing (CGST 9% + SGST 9%)">🏢 In-State</button>
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="_applyGstPreset('igst')" title="Out-of-State Billing (IGST 18%)" style="color:var(--accent);font-weight:700">✈️ Out of State (IGST)</button>
+                  <button class="btn btn-ghost btn-sm" type="button" id="btn-add-tax">${ICONS.plus} Add Tax</button>
+                </div>
               </div>
               <div id="tax-lines-container"></div>
             </div>
@@ -344,21 +348,63 @@ function _removeLineItem(idx) {
 function _renderTaxLines() {
   const c = document.getElementById('tax-lines-container');
   if (!c) return;
-  c.innerHTML = _editorTaxLines.map((tax, idx) => `
-    <div class="tax-line-row">
-      <input class="form-input" type="text" placeholder="Name (e.g. CGST)"
-        value="${_iEsc(tax.name)}"
-        oninput="_editorTaxLines[${idx}].name=this.value;_recalcTotals()"
-        style="flex:1;min-width:90px">
-      <input class="form-input" type="number" min="0" max="100" step="0.01" placeholder="%"
-        value="${tax.rate}"
-        oninput="_editorTaxLines[${idx}].rate=parseFloat(this.value)||0;_recalcTotals()"
-        style="width:70px">
-      <span style="width:100px;text-align:right;font-weight:600;color:var(--text-2);font-size:13px;flex-shrink:0" id="tax-amt-${idx}">—</span>
-      <button class="btn-icon danger" onclick="_removeTaxLine(${idx})">${ICONS.trash}</button>
-    </div>
-  `).join('');
+  c.innerHTML = _editorTaxLines.map((tax, idx) => {
+    const isKnownTax = ['CGST', 'SGST', 'IGST', 'UTGST', 'CESS'].includes(tax.name?.toUpperCase());
+    return `
+      <div class="tax-line-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+        <select class="form-select" style="width:110px;font-weight:600" onchange="_onTaxTypeSelect(${idx}, this.value)">
+          <option value="CGST" ${tax.name?.toUpperCase() === 'CGST' ? 'selected' : ''}>CGST</option>
+          <option value="SGST" ${tax.name?.toUpperCase() === 'SGST' ? 'selected' : ''}>SGST</option>
+          <option value="IGST" ${tax.name?.toUpperCase() === 'IGST' ? 'selected' : ''}>IGST (Out of State)</option>
+          <option value="UTGST" ${tax.name?.toUpperCase() === 'UTGST' ? 'selected' : ''}>UTGST</option>
+          <option value="CESS" ${tax.name?.toUpperCase() === 'CESS' ? 'selected' : ''}>CESS</option>
+          <option value="custom" ${!isKnownTax ? 'selected' : ''}>Custom...</option>
+        </select>
+        <input class="form-input" type="text" placeholder="Tax Name"
+          value="${_iEsc(tax.name)}"
+          oninput="_editorTaxLines[${idx}].name=this.value;_recalcTotals()"
+          style="flex:1;min-width:70px">
+        <input class="form-input" type="number" min="0" max="100" step="0.01" placeholder="%"
+          value="${tax.rate}"
+          oninput="_editorTaxLines[${idx}].rate=parseFloat(this.value)||0;_recalcTotals()"
+          style="width:65px">
+        <span style="width:85px;text-align:right;font-weight:600;color:var(--text-2);font-size:13px;flex-shrink:0" id="tax-amt-${idx}">—</span>
+        <button class="btn-icon danger" onclick="_removeTaxLine(${idx})">${ICONS.trash}</button>
+      </div>
+    `;
+  }).join('');
 }
+
+window._onTaxTypeSelect = function(idx, val) {
+  if (val !== 'custom') {
+    _editorTaxLines[idx].name = val;
+    const defaultTaxRate = _editorSettings?.default_tax_rate || 18;
+    if (val === 'IGST') {
+      _editorTaxLines[idx].rate = defaultTaxRate;
+    } else if (val === 'CGST' || val === 'SGST' || val === 'UTGST') {
+      _editorTaxLines[idx].rate = round2(defaultTaxRate / 2);
+    }
+  }
+  _renderTaxLines();
+  _recalcTotals();
+};
+
+window._applyGstPreset = function(type) {
+  const defaultRate = _editorSettings?.default_tax_rate || 18;
+  if (type === 'igst') {
+    _editorTaxLines = [{ name: 'IGST', rate: defaultRate, amount: 0 }];
+  } else if (type === 'instate') {
+    const halfRate = round2(defaultRate / 2);
+    _editorTaxLines = [
+      { name: 'CGST', rate: halfRate, amount: 0 },
+      { name: 'SGST', rate: halfRate, amount: 0 }
+    ];
+  } else if (type === 'exempt') {
+    _editorTaxLines = [];
+  }
+  _renderTaxLines();
+  _recalcTotals();
+};
 
 function _removeTaxLine(idx) {
   _editorTaxLines.splice(idx,1);
