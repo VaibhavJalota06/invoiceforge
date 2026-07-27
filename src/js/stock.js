@@ -95,7 +95,7 @@ async function renderStock() {
     if (searchInput) {
       searchInput.addEventListener('input', (e) => {
         const q = e.target.value.toLowerCase().trim();
-        const filtered = products.filter(p => (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q));
+        const filtered = products.filter(p => (p.name || '').toLowerCase().includes(q) || (p.sku || '').toLowerCase().includes(q) || (p.hsn_code || '').toLowerCase().includes(q));
         const body = document.getElementById('stock-table-body');
         if (body) body.innerHTML = _renderStockRows(filtered, curr);
       });
@@ -138,7 +138,7 @@ function _renderStockRows(products, curr) {
       <tr>
         <td>
           <div style="font-weight:600;color:var(--text);font-size:14px">${_escStock(p.name)}</div>
-          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">SKU: ${p.sku ? _escStock(p.sku) : 'N/A'} · Unit: ${_escStock(p.unit || 'Pcs')}</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">SKU: ${p.sku ? _escStock(p.sku) : 'N/A'} ${p.hsn_code ? `· HSN: <strong style="color:var(--accent)">${_escStock(p.hsn_code)}</strong>` : ''} · Unit: ${_escStock(p.unit || 'Pcs')}</div>
         </td>
         <td>
           <div style="font-weight:600;color:var(--text)">${curr.symbol} ${Number(p.selling_rate || 0).toLocaleString('en-IN', {minimumFractionDigits:2,maximumFractionDigits:2})}</div>
@@ -177,6 +177,17 @@ async function openProductModal(productId = null) {
         <div class="form-group">
           <label class="form-label" for="p-sku">SKU / Item Code</label>
           <input class="form-input" id="p-sku" type="text" placeholder="e.g. SK-1002" value="${_escStock(p.sku || '')}">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="p-sku">SKU Code (Optional)</label>
+          <input class="form-input" id="p-sku" type="text" placeholder="e.g. MON-4K-27" value="${_escStock(p.sku || '')}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="p-hsn">HSN / SAC Code (GST)</label>
+          <input class="form-input" id="p-hsn" type="text" placeholder="e.g. 8471 / 8517" value="${_escStock(p.hsn_code || '')}">
         </div>
       </div>
 
@@ -226,8 +237,6 @@ async function openProductModal(productId = null) {
 
   const productForm = document.getElementById('product-form');
   productForm?.addEventListener('keydown', (e) => {
-    // Enter is often used while typing inventory data. Do not let it
-    // accidentally submit and close the dialog; use the explicit save button.
     if (e.key === 'Enter' && e.target.type !== 'submit') e.preventDefault();
   });
 
@@ -237,6 +246,7 @@ async function openProductModal(productId = null) {
       id: document.getElementById('p-id').value ? Number(document.getElementById('p-id').value) : null,
       name: document.getElementById('p-name').value.trim(),
       sku: document.getElementById('p-sku').value.trim(),
+      hsn_code: document.getElementById('p-hsn').value.trim(),
       unit: document.getElementById('p-unit').value,
       reorder_level: Number(document.getElementById('p-reorder').value) || 5,
       cost_price: Number(document.getElementById('p-cost').value) || 0,

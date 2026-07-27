@@ -25,11 +25,14 @@ function buildInvoicePrintHtml(inv, settings) {
   const statusLabel = { draft:'Draft', unpaid:'Unpaid', paid:'Paid', overdue:'Overdue' }[inv.status] || inv.status;
   const statusColor = { draft:'#6b7491', unpaid:'#f59e0b', paid:'#22c55e', overdue:'#ef4444' }[inv.status] || '#6b7491';
 
+  const hasHsn = items.some(i => i.hsn_code && String(i.hsn_code).trim() !== '');
+
   const lineItemsHtml = items.length === 0
-    ? `<tr><td colspan="4" style="text-align:center;color:#888;padding:24px">No items</td></tr>`
+    ? `<tr><td colspan="${hasHsn ? 5 : 4}" style="text-align:center;color:#888;padding:24px">No items</td></tr>`
     : items.map((item, idx) => `
         <tr style="background:${idx%2===0?'#fff':'#f9fafb'}">
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;color:#111">${_pEsc(item.description)}</td>
+          ${hasHsn ? `<td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:center;color:#4b5563;font-weight:600">${_pEsc(item.hsn_code || '—')}</td>` : ''}
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:center;color:#374151">${Number(item.quantity).toLocaleString('en-IN')} ${_pEsc(item.unit || 'Pcs')}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:right;color:#374151">${fmt(item.rate)}</td>
           <td style="padding:10px 14px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:600;color:#111">${fmt(item.amount)}</td>

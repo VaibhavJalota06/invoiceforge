@@ -136,7 +136,8 @@ async function openInvoiceEditor(invoiceId, options = {}) {
         <div class="form-section-title" style="margin-bottom:12px">Line Items</div>
         <table class="line-items-table">
           <thead><tr>
-            <th class="col-desc">Description</th>
+            <th class="col-desc">Item Description</th>
+            <th style="width:100px">HSN / SAC</th>
             <th class="col-qty" style="width:90px">Qty</th>
             <th class="col-unit" style="width:110px">Unit</th>
             <th class="col-rate" style="width:120px">Rate</th>
@@ -284,56 +285,93 @@ function _renderLineItems() {
   const tbody = document.getElementById('line-items-body');
   if (!tbody) return;
   const products = window._editorProducts || [];
-  tbody.innerHTML = _editorItems.map((item, idx) => `
-    <tr>
-      <td class="col-desc">
-        <div style="display:flex;flex-direction:column;gap:4px">
-          ${products.length > 0 ? `
-            <select class="form-select" style="font-size:11.5px;padding:3px 8px;margin-bottom:2px" onchange="_onSelectInventoryProduct(${idx}, this.value)">
-              <option value="0">-- Select from Inventory / Stock --</option>
-              ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${_iEsc(p.name)} (${p.current_stock} ${_iEsc(p.unit||'Pcs')} in stock)</option>`).join('')}
-            </select>
-          ` : ''}
-          <input class="form-input" type="text" placeholder="Description of product or service"
-            value="${_iEsc(item.description)}"
-            oninput="_editorItems[${idx}].description=this.value">
-        </div>
-      </td>
-      <td class="col-qty">
-        <input class="form-input" type="number" min="0" step="0.01" value="${item.quantity}"
-          oninput="_editorItems[${idx}].quantity=parseFloat(this.value)||0;_recalcTotals()">
-      </td>
-      <td class="col-unit">
-        <select class="form-select" style="font-size:12px;padding:4px 6px" onchange="_editorItems[${idx}].unit=this.value">
-          <option value="Pcs" ${(!item.unit || item.unit==='Pcs')?'selected':''}>Pcs (Pieces)</option>
-          <option value="Pack" ${item.unit==='Pack'?'selected':''}>Pack (Packs)</option>
-          <option value="Box" ${item.unit==='Box'?'selected':''}>Box (Boxes)</option>
-          <option value="Set" ${item.unit==='Set'?'selected':''}>Set (Sets)</option>
-          <option value="Kg" ${item.unit==='Kg'?'selected':''}>Kg (Kilograms)</option>
-          <option value="Litre" ${item.unit==='Litre'?'selected':''}>Litre (Liters)</option>
-          <option value="Mtr" ${item.unit==='Mtr'?'selected':''}>Mtr (Meters)</option>
-          <option value="Dzn" ${item.unit==='Dzn'?'selected':''}>Dzn (Dozens)</option>
-          <option value="Unit" ${item.unit==='Unit'?'selected':''}>Unit</option>
-        </select>
-      </td>
-      <td class="col-rate">
-        <input class="form-input" type="number" min="0" step="0.01" value="${item.rate}"
-          oninput="_editorItems[${idx}].rate=parseFloat(this.value)||0;_recalcTotals()">
-      </td>
-      <td class="col-amt"><span class="amount-display" id="item-amount-${idx}">—</span></td>
-      <td class="col-del">${_editorItems.length>1
-        ?`<button class="btn-icon danger" onclick="_removeLineItem(${idx})" title="Remove">${ICONS.trash}</button>`
-        :''}</td>
-    </tr>
-  `).join('');
+  tbody.innerHTML = `
+    <datalist id="inv-products-datalist">
+      ${products.map(p => `
+        <option value="${_iEsc(p.name)}">[HSN: ${_iEsc(p.hsn_code || 'N/A')}] SKU: ${_iEsc(p.sku || 'N/A')} | Rate: ₹${p.selling_rate} | Stock: ${p.current_stock} ${_iEsc(p.unit||'Pcs')}</option>
+        ${p.sku ? `<option value="${_iEsc(p.sku)}">${_iEsc(p.name)} [HSN: ${_iEsc(p.hsn_code || 'N/A')}]</option>` : ''}
+        ${p.hsn_code ? `<option value="${_iEsc(p.hsn_code)}">${_iEsc(p.name)} [HSN: ${_iEsc(p.hsn_code)}]</option>` : ''}
+      `).join('')}
+    </datalist>
+    ${_editorItems.map((item, idx) => `
+      <tr>
+        <td class="col-desc">
+          <div style="display:flex;flex-direction:column;gap:4px">
+            ${products.length > 0 ? `
+              <select class="form-select" style="font-size:11.5px;padding:3px 8px;margin-bottom:2px" onchange="_onSelectInventoryProduct(${idx}, this.value)">
+                <option value="0">-- Select Product / Search HSN --</option>
+                ${products.map(p => `<option value="${p.id}" ${item.product_id == p.id ? 'selected' : ''}>${p.hsn_code ? '[HSN: ' + _iEsc(p.hsn_code) + '] ' : ''}${_iEsc(p.name)} (${p.current_stock} ${_iEsc(p.unit||'Pcs')} in stock)</option>`).join('')}
+              </select>
+            ` : ''}
+            <input class="form-input" type="text" list="inv-products-datalist" placeholder="Type product name, SKU, or HSN code (e.g. APPL / 8471)..."
+              value="${_iEsc(item.description)}"
+              oninput="_onProductSearchInput(${idx}, this.value)">
+          </div>
+        </td>
+        <td style="width:100px">
+          <input class="form-input" type="text" id="item-hsn-input-${idx}" placeholder="HSN/SAC"
+            value="${_iEsc(item.hsn_code || '')}"
+            oninput="_editorItems[${idx}].hsn_code=this.value">
+        </td>
+        <td class="col-qty">
+          <input class="form-input" type="number" min="0" step="0.01" value="${item.quantity}"
+            oninput="_editorItems[${idx}].quantity=parseFloat(this.value)||0;_recalcTotals()">
+        </td>
+        <td class="col-unit">
+          <select class="form-select" id="item-unit-select-${idx}" style="font-size:12px;padding:4px 6px" onchange="_editorItems[${idx}].unit=this.value">
+            <option value="Pcs" ${(!item.unit || item.unit==='Pcs')?'selected':''}>Pcs (Pieces)</option>
+            <option value="Pack" ${item.unit==='Pack'?'selected':''}>Pack (Packs)</option>
+            <option value="Box" ${item.unit==='Box'?'selected':''}>Box (Boxes)</option>
+            <option value="Set" ${item.unit==='Set'?'selected':''}>Set (Sets)</option>
+            <option value="Kg" ${item.unit==='Kg'?'selected':''}>Kg (Kilograms)</option>
+            <option value="Litre" ${item.unit==='Litre'?'selected':''}>Litre (Liters)</option>
+            <option value="Mtr" ${item.unit==='Mtr'?'selected':''}>Mtr (Meters)</option>
+            <option value="Dzn" ${item.unit==='Dzn'?'selected':''}>Dzn (Dozens)</option>
+            <option value="Unit" ${item.unit==='Unit'?'selected':''}>Unit</option>
+          </select>
+        </td>
+        <td class="col-rate">
+          <input class="form-input" type="number" min="0" step="0.01" value="${item.rate}"
+            oninput="_editorItems[${idx}].rate=parseFloat(this.value)||0;_recalcTotals()">
+        </td>
+        <td class="col-amt"><span class="amount-display" id="item-amount-${idx}">—</span></td>
+        <td class="col-del">${_editorItems.length>1
+          ?`<button class="btn-icon danger" onclick="_removeLineItem(${idx})" title="Remove">${ICONS.trash}</button>`
+          :''}</td>
+      </tr>
+    `).join('')}
+  `;
   _recalcTotals();
 }
+
+window._onProductSearchInput = function(idx, val) {
+  _editorItems[idx].description = val;
+  const products = window._editorProducts || [];
+  const q = String(val || '').toLowerCase().trim();
+  if (!q) return;
+
+  const p = products.find(x => 
+    (x.name || '').toLowerCase() === q ||
+    (x.sku || '').toLowerCase() === q ||
+    (x.hsn_code || '').toLowerCase() === q
+  );
+
+  if (p) {
+    _editorItems[idx].product_id = p.id;
+    _editorItems[idx].description = p.name;
+    _editorItems[idx].hsn_code = p.hsn_code || '';
+    _editorItems[idx].unit = p.unit || 'Pcs';
+    _editorItems[idx].rate = p.selling_rate || 0;
+    _renderLineItems();
+  }
+};
 
 function _onSelectInventoryProduct(idx, productId) {
   const p = (window._editorProducts || []).find(x => x.id == productId);
   if (p) {
     _editorItems[idx].product_id = p.id;
     _editorItems[idx].description = p.name;
+    _editorItems[idx].hsn_code = p.hsn_code || '';
     _editorItems[idx].unit = p.unit || 'Pcs';
     _editorItems[idx].rate = p.selling_rate || 0;
     _renderLineItems();

@@ -319,7 +319,12 @@ function createSchema() {
     `CREATE INDEX IF NOT EXISTS idx_purchases_vendor_date ON purchases(vendor_id, purchase_date, status)`,
     `CREATE INDEX IF NOT EXISTS idx_stock_tx_product ON stock_transactions(product_id)`,
     `CREATE INDEX IF NOT EXISTS idx_expenses_category_date ON expenses(category_id, expense_date)`,
-    `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`
+    `CREATE INDEX IF NOT EXISTS idx_audit_logs_created ON audit_logs(created_at DESC)`,
+    `ALTER TABLE products ADD COLUMN hsn_code TEXT DEFAULT ''`,
+    `ALTER TABLE invoice_items ADD COLUMN hsn_code TEXT DEFAULT ''`,
+    `ALTER TABLE quotation_items ADD COLUMN hsn_code TEXT DEFAULT ''`,
+    `ALTER TABLE purchase_items ADD COLUMN hsn_code TEXT DEFAULT ''`,
+    `ALTER TABLE sales_return_items ADD COLUMN hsn_code TEXT DEFAULT ''`
   ];
   for (const m of migrations) {
     try { db.exec(m); } catch (e) {} // expected to fail if column already exists
@@ -895,13 +900,14 @@ function saveInvoice(data) {
   const saveItems = db.transaction((invoiceId, rows) => {
     db.prepare('DELETE FROM invoice_items WHERE invoice_id = ?').run(invoiceId);
     const stmt = db.prepare(`
-      INSERT INTO invoice_items (invoice_id, product_id, description, quantity, unit, rate, amount, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO invoice_items (invoice_id, product_id, description, hsn_code, quantity, unit, rate, amount, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     rows.forEach((item, i) => stmt.run(
       invoiceId,
       Number(item.product_id) || 0,
       item.description || '',
+      item.hsn_code || '',
       item.quantity || 1,
       item.unit || 'Pcs',
       item.rate || 0,
@@ -1128,21 +1134,22 @@ function getProduct(id) {
 }
 
 function saveProduct(product) {
-  const { id, name, sku, unit, cost_price, selling_rate, current_stock, reorder_level } = product;
+  const { id, name, sku, hsn_code, unit, cost_price, selling_rate, current_stock, reorder_level } = product;
   const cleanName = String(name || '').trim();
+  const cleanHsn = String(hsn_code || '').trim();
   if (!cleanName) throw new Error('Product name is required');
   if (id) {
     db.prepare(`
       UPDATE products
-      SET name = ?, sku = ?, unit = ?, cost_price = ?, selling_rate = ?, current_stock = ?, reorder_level = ?
+      SET name = ?, sku = ?, hsn_code = ?, unit = ?, cost_price = ?, selling_rate = ?, current_stock = ?, reorder_level = ?
       WHERE id = ?
-    `).run(cleanName, sku || '', unit || 'Pcs', Number(cost_price)||0, Number(selling_rate)||0, Number(current_stock)||0, Number(reorder_level)||5, id);
+    `).run(cleanName, sku || '', cleanHsn, unit || 'Pcs', Number(cost_price)||0, Number(selling_rate)||0, Number(current_stock)||0, Number(reorder_level)||5, id);
     return getProduct(id);
   } else {
     const res = db.prepare(`
-      INSERT INTO products (name, sku, unit, cost_price, selling_rate, current_stock, reorder_level)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(cleanName, sku || '', unit || 'Pcs', Number(cost_price)||0, Number(selling_rate)||0, Number(current_stock)||0, Number(reorder_level)||5);
+      INSERT INTO products (name, sku, hsn_code, unit, cost_price, selling_rate, current_stock, reorder_level)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(cleanName, sku || '', cleanHsn, unit || 'Pcs', Number(cost_price)||0, Number(selling_rate)||0, Number(current_stock)||0, Number(reorder_level)||5);
     return getProduct(res.lastInsertRowid);
   }
 }
