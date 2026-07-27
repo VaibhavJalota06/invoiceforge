@@ -352,13 +352,13 @@ function _renderTaxLines() {
     const isKnownTax = ['CGST', 'SGST', 'IGST', 'UTGST', 'CESS'].includes(tax.name?.toUpperCase());
     return `
       <div class="tax-line-row" style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-        <select class="form-select" style="width:110px;font-weight:600" onchange="_onTaxTypeSelect(${idx}, this.value)">
+        <select class="form-select" style="width:90px;font-weight:700" onchange="_onTaxTypeSelect(${idx}, this.value)">
           <option value="CGST" ${tax.name?.toUpperCase() === 'CGST' ? 'selected' : ''}>CGST</option>
           <option value="SGST" ${tax.name?.toUpperCase() === 'SGST' ? 'selected' : ''}>SGST</option>
-          <option value="IGST" ${tax.name?.toUpperCase() === 'IGST' ? 'selected' : ''}>IGST (Out of State)</option>
+          <option value="IGST" ${tax.name?.toUpperCase() === 'IGST' ? 'selected' : ''}>IGST</option>
           <option value="UTGST" ${tax.name?.toUpperCase() === 'UTGST' ? 'selected' : ''}>UTGST</option>
           <option value="CESS" ${tax.name?.toUpperCase() === 'CESS' ? 'selected' : ''}>CESS</option>
-          <option value="custom" ${!isKnownTax ? 'selected' : ''}>Custom...</option>
+          <option value="custom" ${!isKnownTax ? 'selected' : ''}>Custom</option>
         </select>
         <input class="form-input" type="text" placeholder="Tax Name"
           value="${_iEsc(tax.name)}"
