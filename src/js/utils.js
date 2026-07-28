@@ -160,11 +160,37 @@ function statusBadge(status) {
 // ── Browser Fallback Mock (allows testing directly in web browsers) ─────────────
 if (!window.api) {
   window.api = {
+    // Settings & Security
+    getSettings: async () => JSON.parse(localStorage.getItem('mock_settings') || 'null') || {
+      company_name: 'InvoiceForge Demo',
+      invoice_prefix: 'INV-2026-',
+      invoice_counter: 1,
+      default_currency: 'INR',
+      default_payment_terms: 30,
+      default_tax_rate: 18
+    },
+    saveSettings: async (s) => {
+      localStorage.setItem('mock_settings', JSON.stringify(s));
+      return s;
+    },
+    verifyAdminPin: async () => ({ success: true }),
+    saveSecuritySettings: async (d) => {
+      const s = JSON.parse(localStorage.getItem('mock_settings') || '{}');
+      Object.assign(s, { app_lock_enabled: d.enabled ? 1 : 0, admin_name: d.adminName, admin_pin: d.pin });
+      localStorage.setItem('mock_settings', JSON.stringify(s));
+      return s;
+    },
+    isAppLocked: async () => false,
+    lockApp: async () => false,
+
+    // Clients
     getClients: async () => JSON.parse(localStorage.getItem('mock_clients') || '[]'),
     getClient: async (id) => {
       const clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
       return clients.find(c => c.id == id) || null;
     },
+    getClientProfile: async (id) => null,
+    getClientFullProfile: async (id) => null,
     saveClient: async (data) => {
       let clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
       if (data.id) {
@@ -182,44 +208,33 @@ if (!window.api) {
       localStorage.setItem('mock_clients', JSON.stringify(clients));
       return { success: true };
     },
-    getInvoices: async () => JSON.parse(localStorage.getItem('mock_invoices') || '[]'),
-    getInvoice: async (id) => {
-      const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
-      return invs.find(i => i.id == id) || null;
+
+    // Vendors
+    getVendors: async () => JSON.parse(localStorage.getItem('mock_vendors') || '[]'),
+    getVendor: async (id) => {
+      const vendors = JSON.parse(localStorage.getItem('mock_vendors') || '[]');
+      return vendors.find(v => v.id == id) || null;
     },
-    saveInvoice: async (data) => {
-      let invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+    getVendorFullProfile: async (id) => null,
+    saveVendor: async (data) => {
+      let vendors = JSON.parse(localStorage.getItem('mock_vendors') || '[]');
       if (data.id) {
-        invs = invs.map(i => i.id == data.id ? { ...i, ...data } : i);
+        vendors = vendors.map(v => v.id == data.id ? { ...v, ...data } : v);
       } else {
         data.id = Date.now();
-        invs.push(data);
+        vendors.push(data);
       }
-      localStorage.setItem('mock_invoices', JSON.stringify(invs));
+      localStorage.setItem('mock_vendors', JSON.stringify(vendors));
       return data;
     },
-    deleteInvoice: async (id) => {
-      let invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
-      invs = invs.filter(i => i.id != id);
-      localStorage.setItem('mock_invoices', JSON.stringify(invs));
+    deleteVendor: async (id) => {
+      let vendors = JSON.parse(localStorage.getItem('mock_vendors') || '[]');
+      vendors = vendors.filter(v => v.id != id);
+      localStorage.setItem('mock_vendors', JSON.stringify(vendors));
       return { success: true };
     },
-    getSettings: async () => JSON.parse(localStorage.getItem('mock_settings') || 'null') || {
-      company_name: 'InvoiceForge Demo',
-      invoice_prefix: 'INV-2026-',
-      invoice_counter: 1
-    },
-    saveSettings: async (s) => {
-      localStorage.setItem('mock_settings', JSON.stringify(s));
-      return s;
-    },
-    verifyAdminPin: async () => ({ success: true }),
-    saveSecuritySettings: async (d) => {
-      const s = JSON.parse(localStorage.getItem('mock_settings') || '{}');
-      Object.assign(s, { app_lock_enabled: d.enabled ? 1 : 0, admin_name: d.adminName, admin_pin: d.pin });
-      localStorage.setItem('mock_settings', JSON.stringify(s));
-      return s;
-    },
+
+    // Products & Stock Management
     getProducts: async () => JSON.parse(localStorage.getItem('mock_products') || '[]'),
     getProduct: async (id) => {
       const products = JSON.parse(localStorage.getItem('mock_products') || '[]');
@@ -244,18 +259,122 @@ if (!window.api) {
     },
     recordStockTransaction: async () => ({ success: true }),
     getStockTransactions: async () => [],
+
+    // Invoices
+    getInvoices: async () => JSON.parse(localStorage.getItem('mock_invoices') || '[]'),
+    getAllInvoices: async () => JSON.parse(localStorage.getItem('mock_invoices') || '[]'),
+    getInvoice: async (id) => {
+      const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      return invs.find(i => i.id == id) || null;
+    },
+    saveInvoice: async (data) => {
+      let invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      if (data.id) {
+        invs = invs.map(i => i.id == data.id ? { ...i, ...data } : i);
+      } else {
+        data.id = Date.now();
+        invs.push(data);
+      }
+      localStorage.setItem('mock_invoices', JSON.stringify(invs));
+      return data;
+    },
+    deleteInvoice: async (id) => {
+      let invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
+      invs = invs.filter(i => i.id != id);
+      localStorage.setItem('mock_invoices', JSON.stringify(invs));
+      return { success: true };
+    },
+    duplicateInvoice: async (id) => Date.now(),
+    updateInvoiceStatus: async () => ({ success: true }),
+    getNextInvoiceNumber: async () => ({ invoiceNumber: 'INV-2026-001', formatted: 'INV-2026-001', nextCounter: 1 }),
+    getNextInvoiceNumberObj: async () => ({ invoiceNumber: 'INV-2026-001', formatted: 'INV-2026-001', nextCounter: 1 }),
     getDashboardStats: async () => {
       const clients = JSON.parse(localStorage.getItem('mock_clients') || '[]');
       const invs = JSON.parse(localStorage.getItem('mock_invoices') || '[]');
-      return { clientCount: clients.length, invoiceCount: invs.length, totalRevenue: 0, statusBreakdown: [{ status: 'paid', count: 0 }, { status: 'unpaid', count: 0 }] };
+      return { clientCount: clients.length, invoiceCount: invs.length, totalThisMonth: 0, outstanding: 0, totalRevenue: 0, recent: [], statusBreakdown: [{ status: 'paid', count: 0 }, { status: 'unpaid', count: 0 }, { status: 'overdue', count: 0 }] };
     },
-    getNextInvoiceNumberObj: async () => ({ invoiceNumber: 'INV-2026-001', counter: 1 }),
-    exportPdf: async () => window.print(),
-    printInvoice: async () => window.print(),
-    checkForUpdates: async () => ({ status: 'ok' }),
-    getAppVersion: async () => '1.0.4',
+
+    // Purchases
+    getPurchases: async () => [],
+    getPurchase: async () => null,
+    getNextPurchaseNumber: async () => ({ invoiceNumber: 'PUR-2026-001', formatted: 'PUR-2026-001', nextCounter: 1 }),
+    savePurchase: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deletePurchase: async () => ({ success: true }),
+    updatePurchaseStatus: async () => ({ success: true }),
+
+    // Quotations
+    getQuotations: async () => [],
+    getQuotation: async () => null,
+    getNextQuotationNumber: async () => ({ invoiceNumber: 'QTN-2026-001', formatted: 'QTN-2026-001', nextCounter: 1 }),
+    saveQuotation: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deleteQuotation: async () => ({ success: true }),
+    convertQuotationToInvoice: async () => Date.now(),
+
+    // Expenses
+    getExpenses: async () => [],
+    getExpense: async () => null,
+    saveExpense: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deleteExpense: async () => ({ success: true }),
+    getExpenseCategories: async () => [],
+    saveExpenseCategory: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deleteExpenseCategory: async () => ({ success: true }),
+
+    // Payments
+    getPayments: async () => [],
+    savePayment: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deletePayment: async () => ({ success: true }),
+    getAccountBalances: async () => ({ cash: 0, bank: 0 }),
+
+    // Sales Returns
+    getAllSalesReturns: async () => [],
+    getSalesReturn: async () => null,
+    getNextReturnNumber: async () => ({ invoiceNumber: 'RET-2026-001', formatted: 'RET-2026-001', nextCounter: 1 }),
+    saveSalesReturn: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deleteSalesReturn: async () => ({ success: true }),
+
+    // Users
+    getAllUsers: async () => [{ id: 1, name: 'Administrator', role: 'admin', is_active: 1 }],
+    getUser: async () => ({ id: 1, name: 'Administrator', role: 'admin', is_active: 1 }),
+    getActiveUser: async () => ({ id: 1, name: 'Administrator', role: 'admin', is_active: 1 }),
+    saveUser: async (data) => ({ ...data, id: data.id || Date.now() }),
+    deleteUser: async () => ({ success: true }),
+    switchActiveUser: async () => ({ success: true }),
+
+    // Reports
+    getFinancialReportData: async () => ({ metrics: {}, taxBreakdown: [], clients: [], invoices: [] }),
+    getBalanceSheet: async () => ({}),
+    getMonthlyStockReport: async () => ({}),
+    getAgingReport: async () => ({ receivables: [], payables: [] }),
+    getAuditLogs: async () => [],
+    exportFinancialCsv: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    exportMonthlyDataPackage: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    importMonthlyDataPackage: async () => ({ success: false, reason: 'Not available in browser mode' }),
+
+    // PDF / Print
+    exportPdf: async () => { window.print(); return { success: true }; },
+    printInvoice: async () => { window.print(); return { success: true }; },
+
+    // Sharing
+    shareInvoiceWhatsApp: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    shareInvoiceEmail: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    copyToClipboard: async (text) => { try { await navigator.clipboard.writeText(text); } catch(e) {} return { success: true }; },
+
+    // Storage & Backup
+    getDataPaths: async () => ({ dataDir: '', dbPath: '' }),
+    openDataDir: async () => {},
+    exportBackupZip: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    importBackupZip: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    restoreBackupFile: async () => ({ success: false, reason: 'Not available in browser mode' }),
+    resetDatabase: async () => false,
+
+    // Auto-Updater
+    checkForUpdates: async () => ({ status: 'not-available', message: 'Browser mode — no updates.' }),
+    downloadUpdate: async () => ({ status: 'dev-mode' }),
+    quitAndInstall: async () => {},
+    getAppVersion: async () => '1.3.0',
     checkUpdateNotification: async () => ({ updated: false }),
-    onUpdateStatus: () => {}
+    onUpdateStatus: () => {},
+    logError: async () => {}
   };
 }
 
